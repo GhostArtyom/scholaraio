@@ -310,11 +310,66 @@ class MinerUStatus:
 
 
 def _prompt_result(prompt: str) -> PromptResult:
-    """Read one prompt and preserve whether EOF was hit."""
+    """Read one prompt and preserve whether EOF was hit.
+
+    If stdin is a TTY we temporarily set ``\\r`` as an additional
+    end-of-line character (VEOL) so that terminals where ``ICRNL`` was
+    cleared (Enter only produces ``\\r``, echoed as ``^M``) still work.
+
+    Falls back to character-by-character reading for piped input.
+    """
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+
+    fd = sys.stdin.fileno()
+    old_veol: bytes | None = None
+
+    if hasattr(sys.stdin, "isatty") and sys.stdin.isatty():
+        try:
+            import termios
+
+            old_attr = termios.tcgetattr(fd)
+            old_veol = old_attr[6][termios.VEOL]
+            new_attr = list(old_attr)
+            cc = list(new_attr[6])
+            cc[termios.VEOL] = ord("\r")
+            new_attr[6] = cc
+            termios.tcsetattr(fd, termios.TCSANOW, new_attr)
+        except (ImportError, termios.error):
+            pass
+
     try:
-        return PromptResult(input(prompt).strip(), from_eof=False)
+        chars: list[str] = []
+        while True:
+            ch = sys.stdin.read(1)
+            if not ch:  # EOF
+                if not chars:
+                    raise EOFError
+                break
+            if ch in ("\n", "\r"):
+                # When the terminal sends bare \\r (ICRNL off), the cursor
+                # stays on the same line.  Emit a newline so the next
+                # prompt/output starts on a fresh line.
+                if ch == "\r":
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                break
+            chars.append(ch)
+        return PromptResult("".join(chars).strip())
     except (EOFError, StopIteration):
         return PromptResult("", from_eof=True)
+    finally:
+        if old_veol is not None:
+            try:
+                import termios
+
+                cur = termios.tcgetattr(fd)
+                cc = list(cur[6])
+                cc[termios.VEOL] = old_veol
+                cur[6] = cc
+                termios.tcsetattr(fd, termios.TCSANOW, cur)
+            except (ImportError, termios.error):
+                pass
 
 
 def _prompt_text(prompt: str) -> str:
@@ -752,7 +807,7 @@ def run_wizard(cfg: Config | None = None) -> None:
         cfg: Config instance. If None, loads default config.
     """
     # Language selection
-    print(_S["lang_prompt"]["en"])
+    print(_S["lang_prompt"]["en"], flush=True)
     choice = _prompt_text("> ")
     lang: Lang = "zh" if choice == "2" else "en"
 
@@ -760,7 +815,7 @@ def run_wizard(cfg: Config | None = None) -> None:
         cfg = load_config()
     root = cfg._root
 
-    print(t("welcome", lang))
+    print(t("welcome", lang), flush=True)
 
     # Step 1: Dependencies
     print(t("step_deps", lang))
