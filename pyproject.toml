@@ -29,6 +29,7 @@ dependencies = [
     "defusedxml>=0.7",
     "beautifulsoup4>=4.12",
     "mineru-open-api>=0.2.2",
+    "docling>=2.93.0",
 ]
 
 [project.urls]
