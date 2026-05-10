@@ -39,9 +39,18 @@ ScholarAIO offers more than search. It gives an AI coding agent a research works
 The default and recommended way to use ScholarAIO is simple: install it, configure it once, and open this repository directly with your coding agent.
 
 ```bash
+# 1. Clone the repository
 git clone https://github.com/ZimoLiao/scholaraio.git
 cd scholaraio
+
+# 2. Install dependencies (Choose one method based on your preference)
+# Method A: Using pip (Standard Python Package Manager)
 pip install -e ".[full]"
+
+# Method B: Using uv (Faster Modern Python Package Manager, Recommended)
+uv sync --extra full
+
+# 3. Initialize configuration
 scholaraio setup
 ```
 
@@ -60,6 +69,8 @@ Recommended path:
 # 1. Update the code/package
 git pull
 pip install -e ".[full]"
+# Or if using uv:
+# uv sync --extra full
 
 # 2. From the ScholarAIO runtime root, inspect and migrate explicitly
 scholaraio migrate status
