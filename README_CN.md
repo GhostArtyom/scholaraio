@@ -39,9 +39,18 @@ ScholarAIO 给 AI coding agent 的不只是检索能力，而是一整套真正�
 默认也是最推荐的使用方式其实很简单：安装 ScholarAIO，完成一次配置，然后直接让你的 coding agent（Codex、Claude Code 或其他支持的 agent）打开这个仓库。
 
 ```bash
+# 1. 克隆仓库
 git clone https://github.com/ZimoLiao/scholaraio.git
 cd scholaraio
+
+# 2. 安装依赖（根据你的偏好选择一种方法）
+# 方法 A：使用 pip（标准 Python 包管理器）
 pip install -e ".[full]"
+
+# 方法 B：使用 uv（更快的现代 Python 包管理器，推荐）
+uv sync --extra full
+
+# 3. 初始化配置
 scholaraio setup
 ```
 
@@ -59,6 +68,8 @@ ScholarAIO 1.4 是一次 runtime layout 升级。它不会在 `git pull`、
 # 1. 更新代码/包
 git pull
 pip install -e ".[full]"
+# 或者如果使用 uv：
+# uv sync --extra full
 
 # 2. 在包含 data/、workspace/、config*.yaml 的 ScholarAIO runtime 根目录显式检查并迁移
 scholaraio migrate status
