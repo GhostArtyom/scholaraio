@@ -7,7 +7,7 @@ import re
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse
 
 import requests
 
@@ -28,6 +28,26 @@ from ._models import (
 
 _log = logging.getLogger(__name__)
 
+# Minimum interval between consecutive requests per host to avoid rate-limiting.
+# Semantic Scholar has the strictest anonymous limits (~100 req/5 min).
+_MIN_INTERVAL: dict[str, float] = {
+    "api.semanticscholar.org": 1.0,
+}
+_DEFAULT_MIN_INTERVAL = 0.2
+
+_last_request_time: dict[str, float] = {}
+
+
+def _enforce_request_interval(url: str) -> None:
+    """Sleep if needed to maintain minimum interval since the last request to this host."""
+    host = urlparse(url).hostname or ""
+    interval = _MIN_INTERVAL.get(host, _DEFAULT_MIN_INTERVAL)
+    now = time.monotonic()
+    elapsed = now - _last_request_time.get(host, 0.0)
+    if elapsed < interval:
+        time.sleep(interval - elapsed)
+    _last_request_time[host] = time.monotonic()
+
 
 # ============================================================================
 #  API Query Functions
@@ -37,6 +57,8 @@ _log = logging.getLogger(__name__)
 def _request_with_retry(url: str, max_retries: int = 3) -> requests.Response:
     """GET request with exponential backoff for rate-limit and transient errors."""
     for attempt in range(max_retries + 1):
+        if attempt == 0:
+            _enforce_request_interval(url)
         resp = SESSION.get(url, timeout=TIMEOUT)
         if resp.status_code == 429:
             if attempt < max_retries:
@@ -48,7 +70,7 @@ def _request_with_retry(url: str, max_retries: int = 3) -> requests.Response:
                     attempt + 1,
                     max_retries + 1,
                 )
-                time.sleep(min(wait, 30))
+                time.sleep(wait)
                 continue
             return resp
         if resp.status_code in (502, 503, 504):
