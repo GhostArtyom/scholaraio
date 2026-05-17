@@ -1,8 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch",
-      "WebFetch"
+      "mcp__cc-web__research_brief",
+      "mcp__cc-web__web_search",
+      "mcp__cc-web__fetch_url"
     ]
   }
 }
