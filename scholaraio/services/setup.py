@@ -312,12 +312,20 @@ class MinerUStatus:
     token_configured: bool
 
 
-def _prompt_result(prompt: str) -> PromptResult:
+def _prompt_result_win32(prompt: str) -> PromptResult:
+    """Read one prompt on Windows — plain ``input()`` is sufficient."""
+    try:
+        return PromptResult(input(prompt).strip(), from_eof=False)
+    except (EOFError, StopIteration):
+        return PromptResult("", from_eof=True)
+
+
+def _prompt_result_unix(prompt: str) -> PromptResult:
     """Read one prompt and preserve whether EOF was hit.
 
-    If stdin is a TTY we temporarily set ``\\r`` as an additional
-    end-of-line character (VEOL) so that terminals where ``ICRNL`` was
-    cleared (Enter only produces ``\\r``, echoed as ``^M``) still work.
+    Temporarily set ``\\r`` as an additional end-of-line character (VEOL)
+    so that terminals where ``ICRNL`` was cleared (Enter only produces
+    ``\\r``, echoed as ``^M``) still work.
 
     Falls back to character-by-character reading for piped input.
     """
@@ -325,7 +333,7 @@ def _prompt_result(prompt: str) -> PromptResult:
     sys.stdout.flush()
 
     fd = sys.stdin.fileno()
-    old_veol: bytes | None = None
+    old_veol: int | None = None
 
     if hasattr(sys.stdin, "isatty") and sys.stdin.isatty():
         try:
@@ -350,9 +358,6 @@ def _prompt_result(prompt: str) -> PromptResult:
                     raise EOFError
                 break
             if ch in ("\n", "\r"):
-                # When the terminal sends bare \\r (ICRNL off), the cursor
-                # stays on the same line.  Emit a newline so the next
-                # prompt/output starts on a fresh line.
                 if ch == "\r":
                     sys.stdout.write("\n")
                     sys.stdout.flush()
@@ -373,6 +378,9 @@ def _prompt_result(prompt: str) -> PromptResult:
                 termios.tcsetattr(fd, termios.TCSANOW, cur)
             except (ImportError, termios.error):
                 pass
+
+
+_prompt_result = _prompt_result_win32 if sys.platform == "win32" else _prompt_result_unix
 
 
 def _prompt_text(prompt: str) -> str:
