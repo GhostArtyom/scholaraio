@@ -3,6 +3,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10 CI
+    import tomli as tomllib
+
 from scholaraio import __version__
 
 
@@ -29,5 +34,12 @@ def test_citation_version_matches_project_version():
     assert citation_match.group(1).strip() == project_match.group("version")
 
 
-def test_release_version_is_1_4_0():
-    assert __version__ == "1.4.0"
+def test_release_version_is_1_5_0():
+    assert __version__ == "1.5.0"
+
+
+def test_mineru_open_api_dependency_uses_current_cli_floor():
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+
+    assert "mineru-open-api>=0.5.9" in data["project"]["dependencies"]

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scholaraio"
-version = "1.4.0"
+version = "1.5.0"
 description = "Scholar All-In-One — A research infrastructure for AI agents"
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.10"
@@ -28,7 +28,7 @@ dependencies = [
     "pyyaml>=6.0",
     "defusedxml>=0.7",
     "beautifulsoup4>=4.12",
-    "mineru-open-api>=0.2.2",
+    "mineru-open-api>=0.5.9",
     "docling>=2.93.0",
 ]
 
@@ -85,6 +85,7 @@ dev = [
     "mkdocstrings[python]>=0.24",
     "types-PyYAML>=6.0",
     "types-requests>=2.28",
+    "tomli>=2.0; python_version < '3.11'",
     "pre-commit>=3.5",
 ]
 
@@ -95,6 +96,9 @@ scholaraio = "scholaraio.cli:main"
 where = ["."]
 include = ["scholaraio*"]
 namespaces = false
+
+[tool.setuptools.package-data]
+"scholaraio.interfaces.cli" = ["library-view/*"]
 
 # ---------- ruff ----------
 [tool.ruff]

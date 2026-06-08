@@ -229,6 +229,16 @@ class TestCliHelpLocalization:
 
         assert "proceedings" in fsearch_help
 
+    def test_index_and_search_help_expose_chunk_evidence_retrieval(self):
+        parser = cli._build_parser()
+        choices = parser._subparsers._group_actions[0].choices
+
+        index_help = choices["index"].format_help()
+        search_help = choices["search"].format_help()
+
+        assert "--chunks" in index_help
+        assert "--chunk" in search_help
+
     def test_publish_site_help_is_english(self):
         parser = cli._build_parser()
         publish_help = parser._subparsers._group_actions[0].choices["publish-site"].format_help()
@@ -236,6 +246,15 @@ class TestCliHelpLocalization:
         assert "Generate a static published-paper site" in publish_help
         assert "--out-dir" in publish_help
         assert "--symlink" in publish_help
+
+    def test_gui_help_exposes_read_only_local_webui(self):
+        parser = cli._build_parser()
+        gui_help = parser._subparsers._group_actions[0].choices["gui"].format_help()
+
+        assert "Start the local read-only library WebUI" in gui_help
+        assert "--host" in gui_help
+        assert "--port" in gui_help
+        assert "--no-open" in gui_help
 
     def test_style_list_descriptions_are_english(self, capsys):
         cli.cmd_style(Namespace(style_sub="list"), _build_config({}, Path.cwd()))
@@ -922,6 +941,84 @@ class TestUnifiedSearchDegradeWarnings:
         cli.cmd_usearch(args, cfg)
 
         assert any("Vector search is unavailable; falling back to keyword search" in m for m in messages)
+
+
+class TestChunkSearchCli:
+    def test_cmd_index_delegates_to_chunk_index_when_requested(self, tmp_papers, tmp_db, monkeypatch):
+        seen: list[tuple[Path, Path, bool]] = []
+        messages: list[str] = []
+        monkeypatch.setattr(cli, "ui", messages.append)
+        monkeypatch.setattr(
+            "scholaraio.services.chunks.build_chunk_index",
+            lambda papers_dir, db_path, rebuild=False: seen.append((papers_dir, db_path, rebuild)) or 7,
+        )
+
+        cfg = SimpleNamespace(papers_dir=tmp_papers, index_db=tmp_db)
+        args = Namespace(rebuild=True, chunks=True)
+
+        cli.cmd_index(args, cfg)
+
+        assert seen == [(tmp_papers, tmp_db, True)]
+        assert any("indexed 7 chunks" in message for message in messages)
+
+    def test_cmd_search_prints_chunk_line_addresses_and_snippets(self, tmp_db, monkeypatch):
+        messages: list[str] = []
+        seen: dict[str, object] = {}
+        monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
+        monkeypatch.setattr("scholaraio.services.metrics.get_store", lambda: None)
+        monkeypatch.setattr(cli, "_record_search_metrics", lambda *_args, **_kwargs: None)
+
+        def fake_chunk_search(query, db_path, top_k=20, *, year=None, journal=None, paper_type=None):
+            seen.update(
+                {
+                    "query": query,
+                    "db_path": db_path,
+                    "top_k": top_k,
+                    "year": year,
+                    "journal": journal,
+                    "paper_type": paper_type,
+                }
+            )
+            return [
+                {
+                    "paper_id": "paper-les",
+                    "dir_name": "Lovelace-2026-Chunked-LES",
+                    "title": "Chunked LES evidence retrieval",
+                    "section_title": "1. Methods",
+                    "start_line": 3,
+                    "end_line": 7,
+                    "snippet": "We retain the subgrid coupling term.",
+                }
+            ]
+
+        monkeypatch.setattr("scholaraio.services.chunks.chunk_search", fake_chunk_search)
+
+        cfg = SimpleNamespace(index_db=tmp_db, search=SimpleNamespace(top_k=10))
+        args = Namespace(
+            query=["subgrid", "coupling"],
+            top=3,
+            year="2024",
+            journal="Physics of Fluids",
+            paper_type="review",
+            chunk=True,
+        )
+
+        cli.cmd_search(args, cfg)
+
+        output = "\n".join(messages)
+        assert seen == {
+            "query": "subgrid coupling",
+            "db_path": tmp_db,
+            "top_k": 3,
+            "year": "2024",
+            "journal": "Physics of Fluids",
+            "paper_type": "review",
+        }
+        assert "Chunk search found 1 evidence chunks" in output
+        assert "Lovelace-2026-Chunked-LES" in output
+        assert "1. Methods" in output
+        assert "lines 3-7" in output
+        assert "subgrid coupling" in output
 
     def test_cmd_fsearch_warns_when_main_scope_vector_search_degrades(self, monkeypatch, tmp_path):
         messages: list[str] = []
@@ -1884,6 +1981,36 @@ class TestTopicCliErrors:
 
 
 class TestAttachPdfFallback:
+    def test_attach_pdf_refuses_to_overwrite_existing_pdf_without_force(self, tmp_path, monkeypatch):
+        paper_dir = tmp_path / "papers" / "Smith-2023-Test"
+        paper_dir.mkdir(parents=True)
+        (paper_dir / "meta.json").write_text("{}", encoding="utf-8")
+        existing_pdf = paper_dir / "Smith-2023-Test.pdf"
+        existing_pdf.write_bytes(b"%PDF-curated\n")
+        src_pdf = tmp_path / "input.pdf"
+        src_pdf.write_bytes(b"%PDF-new\n")
+        messages: list[str] = []
+
+        cfg = SimpleNamespace(papers_dir=tmp_path / "papers")
+        monkeypatch.setattr(cli, "_resolve_paper", lambda *_: paper_dir)
+        monkeypatch.setattr(cli, "ui", messages.append)
+
+        args = Namespace(paper_id="paper-1", pdf_path=str(src_pdf), dry_run=False, force=False)
+        with pytest.raises(SystemExit) as exc:
+            cli.cmd_attach_pdf(args, cfg)
+
+        assert exc.value.code == 1
+        assert existing_pdf.read_bytes() == b"%PDF-curated\n"
+        assert src_pdf.read_bytes() == b"%PDF-new\n"
+        assert any("--force" in msg for msg in messages)
+
+    def test_attach_pdf_parser_accepts_force(self):
+        from scholaraio.interfaces.cli.parser import _build_parser
+
+        args = _build_parser().parse_args(["attach-pdf", "paper-1", "paper.pdf", "--force"])
+
+        assert args.force is True
+
     def test_attach_pdf_falls_back_without_cloud_key(self, tmp_path, monkeypatch):
         paper_dir = tmp_path / "papers" / "Smith-2023-Test"
         paper_dir.mkdir(parents=True)
@@ -1933,9 +2060,10 @@ class TestAttachPdfFallback:
         args = Namespace(paper_id="paper-1", pdf_path=str(src_pdf), dry_run=False)
         cli.cmd_attach_pdf(args, cfg)
 
-        assert calls == [(paper_dir / "input.pdf", paper_dir / "paper.md")]
+        expected_pdf = paper_dir / "Smith-2023-Test.pdf"
+        assert calls == [(expected_pdf, paper_dir / "paper.md")]
         assert (paper_dir / "paper.md").read_text(encoding="utf-8") == "fallback attach ok\n"
-        assert not (paper_dir / "input.pdf").exists()
+        assert expected_pdf.read_bytes() == b"%PDF-1.4\n"
 
     def test_attach_pdf_prefers_configured_fallback_without_result_object(self, tmp_path, monkeypatch):
         paper_dir = tmp_path / "papers" / "Smith-2023-Test"
@@ -1997,7 +2125,9 @@ class TestAttachPdfFallback:
         args = Namespace(paper_id="paper-1", pdf_path=str(src_pdf), dry_run=False)
         cli.cmd_attach_pdf(args, cfg)
 
-        assert calls == [(paper_dir / "input.pdf", paper_dir / "paper.md")]
+        expected_pdf = paper_dir / "Smith-2023-Test.pdf"
+        assert calls == [(expected_pdf, paper_dir / "paper.md")]
+        assert expected_pdf.read_bytes() == b"%PDF-1.4\n"
         assert (paper_dir / "paper.md").read_text(encoding="utf-8") == "preferred attach ok\n"
 
     def test_attach_pdf_cloud_does_not_split_when_under_new_limits(self, tmp_path, monkeypatch):

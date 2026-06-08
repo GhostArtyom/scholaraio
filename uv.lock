@@ -3746,7 +3746,7 @@ torch = [
 
 [[package]]
 name = "scholaraio"
-version = "1.4.0"
+version = "1.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -3767,6 +3767,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "types-pyyaml" },
     { name = "types-requests" },
 ]
@@ -3835,7 +3836,7 @@ requires-dist = [
     { name = "faiss-cpu", marker = "extra == 'embed'", specifier = ">=1.7" },
     { name = "markitdown", extras = ["docx", "pptx", "xlsx"], marker = "extra == 'office'", specifier = ">=0.1" },
     { name = "mermaid-py", marker = "extra == 'draw'", specifier = ">=0.3" },
-    { name = "mineru-open-api", specifier = ">=0.2.2" },
+    { name = "mineru-open-api", specifier = ">=0.5.9" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6" },
     { name = "mkdocs-material", marker = "extra == 'dev'", specifier = ">=9.5" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'dev'", specifier = ">=0.24" },
@@ -3862,6 +3863,7 @@ requires-dist = [
     { name = "scholaraio", extras = ["pdf"], marker = "extra == 'full'" },
     { name = "scholaraio", extras = ["topics"], marker = "extra == 'full'" },
     { name = "sentence-transformers", marker = "extra == 'embed'", specifier = ">=3.0" },
+    { name = "tomli", marker = "python_full_version < '3.11' and extra == 'dev'", specifier = ">=2.0" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.28" },
 ]
