@@ -260,6 +260,8 @@ class IngestConfig:
         pdf_fallback_order: MinerU 不可用或解析失败时的替代解析器顺序。
             支持 ``docling`` / ``pymupdf`` / ``auto``。
         pdf_fallback_auto_detect: 是否启用自动检测本机已安装的 fallback 解析器。
+        keep_pdf: 入库后是否保留原始 PDF 在论文目录中。默认为 ``True``；设为 ``False``
+            时只保留 ``paper.md``，原始 PDF 在入库后从 inbox 中删除。
     """
 
     extractor: str = "robust"  # regex | auto | llm | robust
@@ -284,6 +286,7 @@ class IngestConfig:
     pdf_preferred_parser: str = "mineru"
     pdf_fallback_order: list[str] = field(default_factory=lambda: ["auto"])
     pdf_fallback_auto_detect: bool = True
+    keep_pdf: bool = True
 
 
 @dataclass
@@ -1073,6 +1076,7 @@ def _build_config(data: dict, root: Path) -> Config:
         ),
         pdf_fallback_order=_coerce_str_list(ingest_data.get("pdf_fallback_order"), default=["auto"]),
         pdf_fallback_auto_detect=_bool_or_default(ingest_data.get("pdf_fallback_auto_detect"), True),
+        keep_pdf=_bool_or_default(ingest_data.get("keep_pdf"), True),
     )
 
     embed_data = data.get("embed", {}) or {}

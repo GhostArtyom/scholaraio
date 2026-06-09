@@ -542,7 +542,7 @@ def step_dedup(ctx: InboxCtx) -> StepResult:
                         message="DOI duplicates an ingested paper that already has a PDF; review the incoming PDF manually",
                         extra={"duplicate_of": existing_json.parent.name, "doi": doi_key},
                     )
-                else:
+                elif getattr(ctx.cfg.ingest, "keep_pdf", True):
                     move_pdf_to_paper_dir(ctx.pdf_path, existing_dir)
             cleanup_inbox(ctx.pdf_path, None, dry_run=False)
             cleanup_assets(ctx.inbox_dir, pdf_stem, md_stem)
@@ -624,16 +624,17 @@ def step_ingest(ctx: InboxCtx) -> StepResult:
         new_md = paper_d / "paper.md"
         shutil.move(str(ctx.md_path), str(new_md))
         if ctx.pdf_path and ctx.pdf_path.exists():
-            from scholaraio.stores.papers import move_pdf_to_paper_dir
+            if getattr(ctx.cfg.ingest, "keep_pdf", True):
+                from scholaraio.stores.papers import move_pdf_to_paper_dir
 
-            move_pdf_to_paper_dir(ctx.pdf_path, paper_d)
+                move_pdf_to_paper_dir(ctx.pdf_path, paper_d)
         # Move MinerU assets (images, layout.json, etc.) if present
         md_stem = ctx.md_path.stem if ctx.md_path else ""
         pdf_stem = ctx.pdf_path.stem if ctx.pdf_path else ""
         move_assets = _pipeline_attr("_move_assets", assets.move_assets)
         move_assets(ctx.inbox_dir, paper_d, pdf_stem or md_stem, md_stem)
         _ui(f"Ingested: {paper_d.name}/")
-        _ui("  meta.json + paper.md" + (" + PDF" if ctx.pdf_path else ""))
+        _ui("  meta.json + paper.md" + (" + PDF" if ctx.pdf_path and getattr(ctx.cfg.ingest, "keep_pdf", True) else ""))
     else:
         _ui(f"Ingested (metadata only): {paper_d.name}/")
         _ui("  meta.json")
