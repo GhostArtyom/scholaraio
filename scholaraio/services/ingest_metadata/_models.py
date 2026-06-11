@@ -159,8 +159,8 @@ SESSION.headers.update(
         "User-Agent": "ScholarAIO/1.0 (https://github.com/scholaraio)",
     }
 )
-# Bypass local proxy for academic API calls — proxies cause CLOSE-WAIT hangs
-SESSION.trust_env = False
+# Use proxy for academic API calls — needed when direct connection is unavailable
+SESSION.trust_env = True
 
 
 def configure_session(contact_email: str) -> None:
