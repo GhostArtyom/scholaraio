@@ -30,6 +30,7 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "mineru-open-api>=0.5.9",
     "docling>=2.93.0",
+    "matplotlib>=3.10.9",
 ]
 
 [project.urls]
