@@ -152,6 +152,24 @@ workspace/error-connection/Cleland-2022-Surface-Code-Analysis.md
 
 如果某维度不适用（如纯理论论文没有实验），灵活调整标题。
 
+**嵌入论文原图**：
+
+在各节相关位置嵌入论文原始图表，使用相对路径引用 `data/libraries/papers/<paper-dir>/images/` 中的图片文件。
+
+- 从全文 HTML 中提取各图对应的 hash 文件名（如 `images/aeb1d5c0...jpg`）
+- 计算相对路径：从 `workspace/<name>/` 到 `data/libraries/papers/<dir>/images/`，通常为 `../../data/libraries/papers/<dir>/images/<hash>.jpg`
+- 在图前加 `>` 引用块说明该图展示了什么、与当前分析内容的关系
+- 格式示例：
+
+```markdown
+> **Fig. 1a（论文原图）**：级联码的网格布局、稳定子和逻辑算符。
+
+![Fig. 1a: 级联网格结构](../../data/libraries/papers/<dir>/images/<hash>.jpg)
+```
+
+- 关键图表优先级：架构/结构图、主要结果图（保真度/接受率对比）、电路/方法图、基准测试结果图
+- 配合 Markdown 表格对关键定量数据做对比汇总
+
 ### 5. 聊天输出
 
 写完文件后，在聊天中给出简短摘要（3-5 句），包括：
