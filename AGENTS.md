@@ -89,7 +89,6 @@ High-signal canonical implementation pointers:
 ## Commands To Know
 
 - `scholaraio --help`
-- For repo-local validation, prefer `python -m scholaraio.cli ...` so you are exercising the current checkout instead of an older installed console script.
 - `scholaraio setup check`
 - `scholaraio search --help`
 - `scholaraio show --help`
