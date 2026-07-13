@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **EndNote-style Library WebUI workflows** ([#114](https://github.com/ZimoLiao/scholaraio/issues/114)): Added canonical one-click BibTeX copy, separate inline and operating-system PDF actions, composable title/author/year/journal/type/DOI filters, and explicit Metadata/Keyword/Semantic/Unified search modes with stable ranked results and actionable index/vector diagnostics. Native PDF launch is stable-ID-only and anti-CSRF protected, bridges WSL PDFs into the Windows default application, automatically becomes a client download for remote deployments, and falls back to downloading if a native launch fails.
 - **Repository knowledge map** ([#112](https://github.com/ZimoLiao/scholaraio/pull/112)): Added a published `docs/DESIGN.md` knowledge map and focused documentation indexes for agent navigation, while keeping maintenance plans, validation records, and audit notes out of the published MkDocs surface.
 - **Automated cross-project agent setup** ([#111](https://github.com/ZimoLiao/scholaraio/pull/111)): Added `scholaraio setup agent` preview, apply, and check workflows for shell runtime wiring, Codex/OpenClaw skill discovery, Claude Code plugin instructions, and project-local wrappers for Qwen, Cursor, Cline, Windsurf, and GitHub Copilot.
 - **Nature workflow bridge skill** ([#107](https://github.com/ZimoLiao/scholaraio/issues/107)): Added a ScholarAIO `nature-workflow` bridge skill that routes Nature Portfolio writing and figure workflows to the upstream `nature-skills` repository when installed, keeps ScholarAIO-native fallbacks explicit, documents the install and quick-start path, and includes deterministic plus product-demo fixtures that generate reviewable manuscript, figure, slide, and QA artifacts.
 
 ### Fixed
 
+- **Windows setup-check console compatibility** ([#113](https://github.com/ZimoLiao/scholaraio/pull/113)): Replaced non-cp1252 status symbols in the default English `setup check` output so Windows consoles no longer raise `UnicodeEncodeError` during final verification.
 - **Webextract Markdown table-cell cleanup** ([#110](https://github.com/ZimoLiao/scholaraio/pull/110)): Sanitized malformed block-level code fences emitted inside `qt-web-extractor` table cells before HTTP/MCP extraction results reach `webextract` and ingest consumers, while preserving standalone fenced code blocks and pipe characters inside code-cell content.
 
 ## [1.5.0] — 2026-05-24
