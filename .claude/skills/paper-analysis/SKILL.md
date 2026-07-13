@@ -162,9 +162,8 @@ workspace/error-connection/Cleland-2022-Surface-Code-Analysis.md
 - 格式示例：
 
 ```markdown
-> **Fig. 1a（论文原图）**：级联码的网格布局、稳定子和逻辑算符。
-
 ![Fig. 1a: 级联网格结构](../../data/libraries/papers/<dir>/images/<hash>.jpg)
+**Fig. 1a**：级联码的网格布局、稳定子和逻辑算符。
 ```
 
 - 关键图表优先级：架构/结构图、主要结果图（保真度/接受率对比）、电路/方法图、基准测试结果图
