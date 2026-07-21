@@ -104,16 +104,16 @@ _S: dict[str, dict[Lang, str]] = {
     },
     "step_verify": {"en": "Step 5: Verification", "zh": "步骤 5: 验证"},
     "install_prompt": {
-        "en": "  {group} deps missing: {pkgs}\n  Install? (pip install scholaraio[{group}])",
-        "zh": "  {group} 依赖缺失: {pkgs}\n  是否安装？(pip install scholaraio[{group}])",
+        "en": "  {group} deps missing: {pkgs}\n  Install? (pip install {install_spec})",
+        "zh": "  {group} 依赖缺失: {pkgs}\n  是否安装？(pip install {install_spec})",
     },
     "yn": {"en": " [Y/n] ", "zh": " [Y/n] "},
     "skip": {"en": "  Skipped.", "zh": "  已跳过。"},
     "installing": {"en": "  Installing {group}...", "zh": "  正在安装 {group}..."},
     "install_ok": {"en": "  Installed successfully.", "zh": "  安装成功。"},
     "install_fail": {
-        "en": "  Installation failed. You can install later with: pip install scholaraio[{group}]",
-        "zh": "  安装失败。你可以稍后手动安装: pip install scholaraio[{group}]",
+        "en": "  Installation failed. You can install later with: pip install {install_spec}",
+        "zh": "  安装失败。你可以稍后手动安装: pip install {install_spec}",
     },
     "config_exists": {"en": "  config.yaml already exists, skipping.", "zh": "  config.yaml 已存在，跳过。"},
     "config_created": {
@@ -153,8 +153,8 @@ _S: dict[str, dict[Lang, str]] = {
         "zh": "  检测到现有 MinerU token；在网络探测前先视为 MinerU 云路径可用。",
     },
     "parser_choice_auto_token_without_cli": {
-        "en": "  Existing MinerU token detected, but `mineru-open-api` is still missing; install the optional `mineru-cloud` extra first, then continue with MinerU.",
-        "zh": "  检测到现有 MinerU token，但当前还缺少 `mineru-open-api`；请先安装可选的 `mineru-cloud` extra，再继续走 MinerU。",
+        "en": "  Existing MinerU token detected, but `mineru-open-api` is still missing; run `pip install 'scholaraio[mineru-cloud]'` first, then continue with MinerU.",
+        "zh": "  检测到现有 MinerU token，但当前还缺少 `mineru-open-api`；请先运行 `pip install 'scholaraio[mineru-cloud]'`，再继续走 MinerU。",
     },
     "parser_choice_auto_cli_without_token": {
         "en": "  MinerU CLI is available, but no MinerU API token is configured yet; register the free token later if you want cloud mode.",
@@ -972,7 +972,12 @@ def _wizard_deps(lang: Lang) -> None:
             pkgs = ", ".join(p for _, p in _DEP_GROUPS[group])
             print(f"  [OK] {t(label_key, lang)}: {pkgs}")
         else:
-            msg = t("install_prompt", lang).format(group=group, pkgs=", ".join(status.missing))
+            install_spec = _dependency_install_spec(group)
+            msg = t("install_prompt", lang).format(
+                group=group,
+                pkgs=", ".join(status.missing),
+                install_spec=install_spec,
+            )
             print(msg)
             answer = _prompt_result(t("yn", lang))
             ans = answer.text.lower()
@@ -982,14 +987,14 @@ def _wizard_deps(lang: Lang) -> None:
             if ans in ("", "y", "yes"):
                 print(t("installing", lang).format(group=group))
                 ret = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", _dependency_install_spec(group)],
+                    [sys.executable, "-m", "pip", "install", install_spec],
                     capture_output=True,
                     text=True,
                 )
                 if ret.returncode == 0:
                     print(t("install_ok", lang))
                 else:
-                    print(t("install_fail", lang).format(group=group))
+                    print(t("install_fail", lang).format(install_spec=install_spec))
                     if ret.stderr:
                         # show last 3 lines of error
                         err_lines = ret.stderr.strip().splitlines()[-3:]

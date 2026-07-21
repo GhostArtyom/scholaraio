@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
 
 from scholaraio.core.config import Config
 from scholaraio.services.setup import (
@@ -415,6 +416,32 @@ def test_core_dependency_probe_does_not_require_optional_mineru_cloud_cli():
 def test_dependency_install_spec_does_not_invent_core_extra():
     assert _dependency_install_spec("core") == "scholaraio"
     assert _dependency_install_spec("office") == "scholaraio[office]"
+
+
+def test_wizard_deps_uses_published_core_install_target(monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda *_args, **_kwargs: "y")
+    monkeypatch.setattr(
+        "scholaraio.services.setup.check_dep_group",
+        lambda group: type(
+            "Status",
+            (),
+            {"installed": group != "core", "missing": ["requests"]},
+        )(),
+    )
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args)
+        return type("Result", (), {"returncode": 1, "stderr": ""})()
+
+    monkeypatch.setattr("scholaraio.services.setup.subprocess.run", fake_run)
+
+    _wizard_deps("en")
+
+    out = capsys.readouterr().out
+    assert calls == [[sys.executable, "-m", "pip", "install", "scholaraio"]]
+    assert "pip install scholaraio" in out
+    assert "scholaraio[core]" not in out
 
 
 def test_check_dep_group_treats_oserror_import_failure_as_missing(monkeypatch):

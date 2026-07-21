@@ -21,8 +21,8 @@ It does not claim that the beta tag has been created, that PyPI has published
 
 | Gate | Command or path | Result |
 |---|---|---|
-| Full regression suite | `python -m pytest -q -p no:cacheprovider` | 1641 passed |
-| Focused 2.0/setup tests | version, release metadata, agent docs, setup, CLI messages | 173 passed |
+| Full regression suite | `python -m pytest -q -p no:cacheprovider` | 1643 passed |
+| Focused 2.0/setup tests | version, release metadata, agent docs, setup, MinerU, CLI messages | 215 passed |
 | Lint | `python -m ruff check scholaraio tests` | passed |
 | Format | `python -m ruff format --check scholaraio tests` | 225 files formatted |
 | Type check | `python -m mypy scholaraio` | 148 source files, no issues |
@@ -42,6 +42,8 @@ It does not claim that the beta tag has been created, that PyPI has published
   treating every proposed tool as an implementation request.
 - `mineru-open-api` moved from mandatory dependencies to the isolated
   `mineru-cloud` extra and is not pulled in by `full`.
+- Setup, cloud-parser failure guidance, and the plugin bootstrap consistently
+  point to the published optional extra and fresh paper-library path.
 - README, docs home, CLI help, package metadata, citation metadata, plugin
   manifests, and the bilingual agent entries use the academic-harness position
   while preserving the Scholar All-in-One name.

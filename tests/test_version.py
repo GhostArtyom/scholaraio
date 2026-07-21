@@ -74,3 +74,11 @@ def test_unowned_draw_packages_are_not_published_or_recommended():
     assert not any(requirement.startswith("mermaid-py") for requirement in all_requirements)
     assert not any(requirement.startswith("cli-anything-inkscape") for requirement in all_requirements)
     assert "scholaraio[draw]" not in install_script
+
+
+def test_plugin_bootstrap_reports_fresh_paper_library_path():
+    root = Path(__file__).resolve().parents[1]
+    install_script = (root / "scripts" / "check-deps.sh").read_text(encoding="utf-8")
+
+    assert "$GLOBAL_DIR/data/libraries/papers/" in install_script
+    assert '"  Your data:    $GLOBAL_DIR/data/papers/"' not in install_script
