@@ -40,6 +40,7 @@ Use the source install path when you want to inspect the codebase, edit the pack
 
 | Extra | What it adds |
 |-------|-------------|
+| `mineru-cloud` | Optional `mineru-open-api` CLI for the MinerU cloud parser path |
 | `embed` | Semantic search (sentence-transformers + FAISS) |
 | `topics` | BERTopic topic modeling |
 | `pdf` | PyMuPDF-based PDF fallback and long-PDF utilities |
@@ -52,6 +53,10 @@ Diagram generation does not need a Python `draw` extra: Mermaid, DOT, and
 drawio source generation are part of the core package. SVG rendering requires
 the Graphviz `dot` system executable, and Beamer SVG inclusion may require
 Inkscape; check both with `scholaraio setup check`.
+
+`mineru-cloud` is intentionally not included in either the base install or
+`full`. Install it only when you choose the MinerU cloud parser path; local
+MinerU, Docling, and PyMuPDF paths do not require that external CLI.
 
 ## Setup Wizard
 

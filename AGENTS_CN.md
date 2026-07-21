@@ -8,7 +8,7 @@
 
 ## ScholarAIO 是什么
 
-ScholarAIO 是一个 AI-native research terminal。用户通过 coding agent 用自然语言完成文献检索、阅读、分析、写作、图表生成，以及科学计算辅助工作流。
+ScholarAIO 是一个面向 agent 的 All-in-One 学术 harness。研究者通过 coding agent 检索文献、检查证据、组织持久化项目上下文、生成可审阅研究产物，并使用边界明确的科学工具适配器；ScholarAIO 不取代当前 agent 的原生推理与编排能力。
 
 核心 Python 包是 `scholaraio`。真正做事时，应优先走 ScholarAIO CLI 和项目 skills，而不是绕过运行时 helper 直接手改数据目录。
 
@@ -28,11 +28,12 @@ ScholarAIO 是一个 AI-native research terminal。用户通过 coding agent 用
 建议按这个顺序看：
 
 1. [`README.md`](README.md)：产品定位和顶层结构
-2. [`docs/DESIGN.md`](docs/DESIGN.md)：仓库知识地图
-3. [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)：直接开仓库 vs 插件 / 跨项目接入
-4. [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md)：当前 CLI 面
-5. [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md)：更深的 agent、runtime、skill 组织说明
-6. [`docs/internal/PLANS.md`](docs/internal/PLANS.md) 和 [`docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md)：涉及运行时布局、迁移、兼容层时先看
+2. [`STRATEGY.md`](STRATEGY.md)：修改产品范围或新增外部集成前先看
+3. [`docs/DESIGN.md`](docs/DESIGN.md)：仓库知识地图
+4. [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md)：直接开仓库 vs 插件 / 跨项目接入
+5. [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md)：当前 CLI 面
+6. [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md)：更深的 agent、runtime、skill 组织说明
+7. [`docs/internal/PLANS.md`](docs/internal/PLANS.md) 和 [`docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md)：涉及运行时布局、迁移、兼容层时先看
 
 ## Skill 优先工作流
 

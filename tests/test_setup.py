@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
 
 from scholaraio.core.config import Config
 from scholaraio.services.setup import (
@@ -15,6 +16,7 @@ from scholaraio.services.setup import (
     _check_huggingface,
     _check_inkscape,
     _check_mineru,
+    _dependency_install_spec,
     _prompt_text,
     _wizard_config,
     _wizard_deps,
@@ -401,6 +403,47 @@ def test_setup_does_not_advertise_an_empty_draw_dependency_group():
     assert "draw" not in _DEP_GROUPS
 
 
+def test_core_dependency_probe_does_not_require_optional_mineru_cloud_cli():
+    assert ("mineru_open_api", "mineru-open-api") not in _DEP_GROUPS["core"]
+    assert {pip_name for _, pip_name in _DEP_GROUPS["core"]} == {
+        "requests",
+        "pyyaml",
+        "defusedxml",
+        "beautifulsoup4",
+    }
+
+
+def test_dependency_install_spec_does_not_invent_core_extra():
+    assert _dependency_install_spec("core") == "scholaraio"
+    assert _dependency_install_spec("office") == "scholaraio[office]"
+
+
+def test_wizard_deps_uses_published_core_install_target(monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda *_args, **_kwargs: "y")
+    monkeypatch.setattr(
+        "scholaraio.services.setup.check_dep_group",
+        lambda group: type(
+            "Status",
+            (),
+            {"installed": group != "core", "missing": ["requests"]},
+        )(),
+    )
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args)
+        return type("Result", (), {"returncode": 1, "stderr": ""})()
+
+    monkeypatch.setattr("scholaraio.services.setup.subprocess.run", fake_run)
+
+    _wizard_deps("en")
+
+    out = capsys.readouterr().out
+    assert calls == [[sys.executable, "-m", "pip", "install", "scholaraio"]]
+    assert "pip install scholaraio" in out
+    assert "scholaraio[core]" not in out
+
+
 def test_check_dep_group_treats_oserror_import_failure_as_missing(monkeypatch):
     original = importlib.import_module
 
@@ -446,7 +489,7 @@ def test_check_mineru_reports_actionable_failure(monkeypatch):
     ok, detail = _check_mineru(cfg, "zh")
 
     assert ok is False
-    assert "mineru-open-api" in detail
+    assert "scholaraio[mineru-cloud]" in detail
     assert "token" in detail
     assert "Docker" in detail
 
