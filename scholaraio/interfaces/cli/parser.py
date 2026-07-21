@@ -62,7 +62,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="scholaraio",
-        description="Research terminal for AI coding agents",
+        description="Academic harness for AI coding agents",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

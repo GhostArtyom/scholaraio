@@ -15,6 +15,7 @@ from scholaraio.services.setup import (
     _check_huggingface,
     _check_inkscape,
     _check_mineru,
+    _dependency_install_spec,
     _prompt_text,
     _wizard_config,
     _wizard_deps,
@@ -401,6 +402,21 @@ def test_setup_does_not_advertise_an_empty_draw_dependency_group():
     assert "draw" not in _DEP_GROUPS
 
 
+def test_core_dependency_probe_does_not_require_optional_mineru_cloud_cli():
+    assert ("mineru_open_api", "mineru-open-api") not in _DEP_GROUPS["core"]
+    assert {pip_name for _, pip_name in _DEP_GROUPS["core"]} == {
+        "requests",
+        "pyyaml",
+        "defusedxml",
+        "beautifulsoup4",
+    }
+
+
+def test_dependency_install_spec_does_not_invent_core_extra():
+    assert _dependency_install_spec("core") == "scholaraio"
+    assert _dependency_install_spec("office") == "scholaraio[office]"
+
+
 def test_check_dep_group_treats_oserror_import_failure_as_missing(monkeypatch):
     original = importlib.import_module
 
@@ -446,7 +462,7 @@ def test_check_mineru_reports_actionable_failure(monkeypatch):
     ok, detail = _check_mineru(cfg, "zh")
 
     assert ok is False
-    assert "mineru-open-api" in detail
+    assert "scholaraio[mineru-cloud]" in detail
     assert "token" in detail
     assert "Docker" in detail
 

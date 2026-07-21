@@ -1,8 +1,10 @@
 # ScholarAIO
 
-**Scholar All-In-One** — A research infrastructure for AI agents.
+**Scholar All-In-One** — an academic harness for AI agents.
 
-ScholarAIO is a research infrastructure for AI agents. You interact with your literature knowledge base through natural language — searching, reading, analyzing, and writing — all from the command line.
+ScholarAIO provides the durable academic context and workflow contracts around a coding agent: evidence, project state, skills, CLI operations, research outputs, and verification. The active agent remains responsible for reasoning and orchestration.
+
+In 2.x, **All-in-One means one coherent academic workflow**, not a distribution of every scientific package or a general autoresearch platform. See the repository-root [strategy](https://github.com/zimoliao/scholaraio/blob/main/STRATEGY.md) and the [2.x public contract](design-docs/2.x-public-contract.md).
 
 ## Features
 
@@ -19,7 +21,7 @@ ScholarAIO is a research infrastructure for AI agents. You interact with your li
 - **Federated Discovery**: Search your library, explore silos, and arXiv in one flow
 - **Research Insights**: Inspect search/read behavior trends and semantic neighbor recommendations
 - **Scientific Tool Docs**: Query indexed official docs for scientific computing tools with `toolref`
-- **Extensible Tool Onboarding**: Keep adding the next scientific tool users need through a documented onboarding workflow
+- **Bounded Tool Adapters**: Keep external integrations optional, isolated, testable, and subject to the 2.x integration gate
 - **Office Document Inspection**: Verify DOCX / PPTX / XLSX structure with `document inspect`
 - **Agent Skills**: Reusable workflows for search, writing, scientific runtime, and more
 - **Writing Router**: Start with `academic-writing` to route reviews, guided deep reading, paper sections, rebuttals, posters, and technical reports to the right workflow
@@ -32,6 +34,7 @@ scholaraio setup
 ```
 
 See [Installation](getting-started/installation.md) for detailed instructions.
+See [Upgrading To 2.0](getting-started/upgrading-to-2.0.md) for compatibility and migration guidance.
 If you are working from a local clone or contributing to ScholarAIO itself, use the editable install path shown there instead.
 See [Agent Setup](getting-started/agent-setup.md) for repo-open vs plugin setup paths.
 See [Repository Knowledge Map](DESIGN.md) for the agent-facing documentation structure.
@@ -45,7 +48,7 @@ See [API Reference](api/index.md) for Python module documentation.
 
 | Mode | Interface | Best for |
 |------|-----------|----------|
-| **Agent** | Claude Code CLI | Full research workflow via natural language |
+| **Agent** | Supported coding agent | Full research workflow via natural language |
 | **CLI** | Terminal | Scripting and automation |
 
 ## Repository Knowledge

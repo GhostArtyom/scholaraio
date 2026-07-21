@@ -199,7 +199,7 @@ class TestCliHelpLocalization:
         parser = cli._build_parser()
         root_help = parser.format_help()
 
-        assert "Research terminal for AI coding agents" in root_help
+        assert "Academic harness for AI coding agents" in root_help
         assert "local academic literature search tool" not in root_help
 
     def test_setup_help_is_fully_localized(self):
