@@ -43,7 +43,6 @@ _S: dict[str, dict[Lang, str]] = {
     "import_deps": {"en": "Import deps", "zh": "导入依赖"},
     "pdf_deps": {"en": "PDF deps", "zh": "PDF 依赖"},
     "office_deps": {"en": "Office deps", "zh": "Office 依赖"},
-    "draw_deps": {"en": "Draw deps", "zh": "绘图依赖"},
     "config_yaml": {"en": "config.yaml", "zh": "config.yaml"},
     "llm_key": {"en": "LLM API key", "zh": "LLM API key"},
     "mineru": {"en": "MinerU", "zh": "MinerU"},
@@ -105,16 +104,16 @@ _S: dict[str, dict[Lang, str]] = {
     },
     "step_verify": {"en": "Step 5: Verification", "zh": "步骤 5: 验证"},
     "install_prompt": {
-        "en": "  {group} deps missing: {pkgs}\n  Install? (pip install scholaraio[{group}])",
-        "zh": "  {group} 依赖缺失: {pkgs}\n  是否安装？(pip install scholaraio[{group}])",
+        "en": "  {group} deps missing: {pkgs}\n  Install? (pip install {install_spec})",
+        "zh": "  {group} 依赖缺失: {pkgs}\n  是否安装？(pip install {install_spec})",
     },
     "yn": {"en": " [Y/n] ", "zh": " [Y/n] "},
     "skip": {"en": "  Skipped.", "zh": "  已跳过。"},
     "installing": {"en": "  Installing {group}...", "zh": "  正在安装 {group}..."},
     "install_ok": {"en": "  Installed successfully.", "zh": "  安装成功。"},
     "install_fail": {
-        "en": "  Installation failed. You can install later with: pip install scholaraio[{group}]",
-        "zh": "  安装失败。你可以稍后手动安装: pip install scholaraio[{group}]",
+        "en": "  Installation failed. You can install later with: pip install {install_spec}",
+        "zh": "  安装失败。你可以稍后手动安装: pip install {install_spec}",
     },
     "config_exists": {"en": "  config.yaml already exists, skipping.", "zh": "  config.yaml 已存在，跳过。"},
     "config_created": {
@@ -154,8 +153,8 @@ _S: dict[str, dict[Lang, str]] = {
         "zh": "  检测到现有 MinerU token；在网络探测前先视为 MinerU 云路径可用。",
     },
     "parser_choice_auto_token_without_cli": {
-        "en": "  Existing MinerU token detected, but `mineru-open-api` is still missing; install it first (usually `pip install -e .` or `pip install mineru-open-api`), then continue with MinerU.",
-        "zh": "  检测到现有 MinerU token，但当前还缺少 `mineru-open-api`；请先安装它（通常直接 `pip install -e .` 或 `pip install mineru-open-api`），再继续走 MinerU。",
+        "en": "  Existing MinerU token detected, but `mineru-open-api` is still missing; run `pip install 'scholaraio[mineru-cloud]'` first, then continue with MinerU.",
+        "zh": "  检测到现有 MinerU token，但当前还缺少 `mineru-open-api`；请先运行 `pip install 'scholaraio[mineru-cloud]'`，再继续走 MinerU。",
     },
     "parser_choice_auto_cli_without_token": {
         "en": "  MinerU CLI is available, but no MinerU API token is configured yet; register the free token later if you want cloud mode.",
@@ -404,7 +403,12 @@ def _prompt_text(prompt: str) -> str:
 
 # (import_name, pip_name)
 _DEP_GROUPS: dict[str, list[tuple[str, str]]] = {
-    "core": [("requests", "requests"), ("yaml", "pyyaml"), ("mineru_open_api", "mineru-open-api")],
+    "core": [
+        ("requests", "requests"),
+        ("yaml", "pyyaml"),
+        ("defusedxml", "defusedxml"),
+        ("bs4", "beautifulsoup4"),
+    ],
     "embed": [("sentence_transformers", "sentence-transformers"), ("faiss", "faiss-cpu"), ("numpy", "numpy")],
     "topics": [("bertopic", "bertopic"), ("pandas", "pandas")],
     "import": [("endnote_utils", "endnote-utils"), ("pyzotero", "pyzotero")],
@@ -415,7 +419,6 @@ _DEP_GROUPS: dict[str, list[tuple[str, str]]] = {
         ("pptx", "python-pptx"),
         ("openpyxl", "openpyxl"),
     ],
-    "draw": [("mermaid", "mermaid-py"), ("cli_anything", "cli-anything-inkscape")],
 }
 
 _SPEC_ONLY_IMPORTS = {"sentence_transformers", "faiss", "numpy"}
@@ -430,11 +433,16 @@ class DepGroupStatus:
     missing: list[str] = field(default_factory=list)
 
 
+def _dependency_install_spec(group: str) -> str:
+    """Return the published install target for a dependency group."""
+    return "scholaraio" if group == "core" else f"scholaraio[{group}]"
+
+
 def check_dep_group(group: str) -> DepGroupStatus:
     """Check if all packages in a dependency group are importable.
 
     Args:
-        group: Dependency group name (core/embed/topics/import/pdf/office/draw).
+        group: Dependency group name (core/embed/topics/import/pdf/office).
 
     Returns:
         DepGroupStatus with installed flag and list of missing pip package names.
@@ -514,14 +522,13 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
         ("import", "import_deps"),
         ("pdf", "pdf_deps"),
         ("office", "office_deps"),
-        ("draw", "draw_deps"),
     ]:
         status = check_dep_group(group)
         if status.installed:
             pkgs = ", ".join(p for _, p in _DEP_GROUPS[group])
             results.append(CheckResult(t(label_key, lang), True, pkgs))
         else:
-            hint = f"pip install scholaraio[{group}]"
+            hint = f"pip install {_dependency_install_spec(group)}"
             results.append(
                 CheckResult(
                     t(label_key, lang),
@@ -811,12 +818,12 @@ def _detect_mineru(cfg: Config, lang: Lang) -> MinerUStatus:
         if lang == "zh":
             detail = (
                 "已配置 MinerU token，但未安装 mineru-open-api"
-                f" | pip install mineru-open-api | 本地部署: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
+                f" | pip install 'scholaraio[mineru-cloud]' | 本地部署: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
             )
         else:
             detail = (
                 "MinerU token configured, but mineru-open-api is not installed"
-                f" | pip install mineru-open-api | local docs: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
+                f" | pip install 'scholaraio[mineru-cloud]' | local docs: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
             )
         return MinerUStatus(
             ok=False,
@@ -830,12 +837,12 @@ def _detect_mineru(cfg: Config, lang: Lang) -> MinerUStatus:
     if lang == "zh":
         detail = (
             "未配置 MinerU token / CLI，且本地 MinerU 服务不可达"
-            f" | 安装 CLI: pip install mineru-open-api | token: {MINERU_TOKEN_URL} | 本地部署: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
+            f" | 安装 CLI: pip install 'scholaraio[mineru-cloud]' | token: {MINERU_TOKEN_URL} | 本地部署: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
         )
     else:
         detail = (
             "MinerU token / CLI not configured and local MinerU service is unreachable"
-            f" | install CLI: pip install mineru-open-api | token: {MINERU_TOKEN_URL} | local docs: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
+            f" | install CLI: pip install 'scholaraio[mineru-cloud]' | token: {MINERU_TOKEN_URL} | local docs: {MINERU_DOCS_URL} | Docker: {MINERU_DOCKER_URL}"
         )
     return MinerUStatus(
         ok=False,
@@ -1021,14 +1028,19 @@ def run_wizard(cfg: Config | None = None) -> None:
 
 def _wizard_deps(lang: Lang) -> None:
     """Check and optionally install missing dependency groups."""
-    for group in ("core", "embed", "topics", "import", "pdf", "office", "draw"):
+    for group in ("core", "embed", "topics", "import", "pdf", "office"):
         status = check_dep_group(group)
         label_key = f"{group}_deps"
         if status.installed:
             pkgs = ", ".join(p for _, p in _DEP_GROUPS[group])
             print(f"  [OK] {t(label_key, lang)}: {pkgs}")
         else:
-            msg = t("install_prompt", lang).format(group=group, pkgs=", ".join(status.missing))
+            install_spec = _dependency_install_spec(group)
+            msg = t("install_prompt", lang).format(
+                group=group,
+                pkgs=", ".join(status.missing),
+                install_spec=install_spec,
+            )
             print(msg)
             answer = _prompt_result(t("yn", lang))
             ans = answer.text.lower()
@@ -1038,14 +1050,14 @@ def _wizard_deps(lang: Lang) -> None:
             if ans in ("", "y", "yes"):
                 print(t("installing", lang).format(group=group))
                 ret = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", f"scholaraio[{group}]"],
+                    [sys.executable, "-m", "pip", "install", install_spec],
                     capture_output=True,
                     text=True,
                 )
                 if ret.returncode == 0:
                     print(t("install_ok", lang))
                 else:
-                    print(t("install_fail", lang).format(group=group))
+                    print(t("install_fail", lang).format(install_spec=install_spec))
                     if ret.stderr:
                         # show last 3 lines of error
                         err_lines = ret.stderr.strip().splitlines()[-3:]

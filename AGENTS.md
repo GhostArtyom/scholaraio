@@ -8,7 +8,7 @@ This is the repository entry document for coding agents. It is intentionally sho
 
 ## What ScholarAIO Is
 
-ScholarAIO is an AI-native research terminal. Users work through a coding agent in natural language to search literature, read papers, analyze claims, inspect figures and formulas, write notes or reports, and run scientific-computing support workflows.
+ScholarAIO is an All-in-One academic harness for agents. Researchers work through a coding agent to search literature, inspect evidence, organize persistent project context, produce reviewable research outputs, and use bounded scientific-tool adapters without ScholarAIO replacing the agent's native reasoning or orchestration.
 
 The Python package is `scholaraio`. Real work should usually happen through the ScholarAIO CLI and project skills, not by bypassing runtime helpers with ad hoc file edits.
 
@@ -28,11 +28,12 @@ The Python package is `scholaraio`. Real work should usually happen through the 
 Read these in roughly this order:
 
 1. [`README.md`](README.md) for the product overview and top-level structure.
-2. [`docs/DESIGN.md`](docs/DESIGN.md) for the repository knowledge map.
-3. [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md) for repo-open vs plugin or cross-project setup.
-4. [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md) for the current user-facing CLI surface.
-5. [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md) for deeper agent, runtime, and skill organization details.
-6. [`docs/internal/PLANS.md`](docs/internal/PLANS.md) and [`docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md) before changing runtime layout, migration, or compatibility behavior.
+2. [`STRATEGY.md`](STRATEGY.md) before changing product scope or adding an external integration.
+3. [`docs/DESIGN.md`](docs/DESIGN.md) for the repository knowledge map.
+4. [`docs/getting-started/agent-setup.md`](docs/getting-started/agent-setup.md) for repo-open vs plugin or cross-project setup.
+5. [`docs/guide/cli-reference.md`](docs/guide/cli-reference.md) for the current user-facing CLI surface.
+6. [`docs/guide/agent-reference.md`](docs/guide/agent-reference.md) for deeper agent, runtime, and skill organization details.
+7. [`docs/internal/PLANS.md`](docs/internal/PLANS.md) and [`docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md`](docs/internal/exec-plans/completed/scholaraio-upgrade-plan.md) before changing runtime layout, migration, or compatibility behavior.
 
 ## Skill-First Workflow
 

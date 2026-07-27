@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
 
 from scholaraio.core.config import Config
 from scholaraio.services.setup import (
+    _DEP_GROUPS,
     DepGroupStatus,
     ParserChoice,
     _check_docling,
@@ -14,6 +16,7 @@ from scholaraio.services.setup import (
     _check_huggingface,
     _check_inkscape,
     _check_mineru,
+    _dependency_install_spec,
     _prompt_text,
     _wizard_config,
     _wizard_deps,
@@ -53,7 +56,7 @@ def test_check_dep_group_suppresses_import_side_effect_output(monkeypatch, capsy
     original = importlib.import_module
 
     def fake_import(name: str, package=None):
-        if name == "mermaid":
+        if name == "bertopic":
             print("noisy stdout during import")
             raise RuntimeError("optional backend warning")
         if package is None:
@@ -62,7 +65,7 @@ def test_check_dep_group_suppresses_import_side_effect_output(monkeypatch, capsy
 
     monkeypatch.setattr(importlib, "import_module", fake_import)
 
-    status = check_dep_group("draw")
+    status = check_dep_group("topics")
 
     captured = capsys.readouterr()
     assert not status.installed
@@ -201,7 +204,7 @@ def test_setup_check_english_output_is_cp1252_safe(tmp_path, monkeypatch):
     output.encode("cp1252")
 
 
-def test_run_check_includes_pdf_office_and_draw_dependency_groups(monkeypatch):
+def test_run_check_includes_runtime_dependency_groups_without_removed_draw_extra(monkeypatch):
     cfg = Config()
     monkeypatch.setattr("scholaraio.services.setup._check_mineru", lambda *_: (True, "mineru ok"))
     monkeypatch.setattr("scholaraio.services.setup._check_docling", lambda *_: (True, "docling ok"))
@@ -215,7 +218,7 @@ def test_run_check_includes_pdf_office_and_draw_dependency_groups(monkeypatch):
     labels = [item.label for item in results]
     assert "PDF 依赖" in labels
     assert "Office 依赖" in labels
-    assert "绘图依赖" in labels
+    assert "绘图依赖" not in labels
     assert "Graphviz dot" in labels
     assert "Inkscape" in labels
 
@@ -396,22 +399,49 @@ def test_run_check_uses_accessor_dirs_for_directory_status(tmp_path, monkeypatch
     assert result_map["目录结构"].ok is True
 
 
-def test_check_dep_group_supports_draw_extra(monkeypatch):
-    original = importlib.import_module
+def test_setup_does_not_advertise_an_empty_draw_dependency_group():
+    assert "draw" not in _DEP_GROUPS
 
-    def fake_import(name: str, package=None):
-        if name == "cli_anything":
-            raise RuntimeError("bad optional import")
-        if package is None:
-            return original(name)
-        return original(name, package)
 
-    monkeypatch.setattr(importlib, "import_module", fake_import)
+def test_core_dependency_probe_does_not_require_optional_mineru_cloud_cli():
+    assert ("mineru_open_api", "mineru-open-api") not in _DEP_GROUPS["core"]
+    assert {pip_name for _, pip_name in _DEP_GROUPS["core"]} == {
+        "requests",
+        "pyyaml",
+        "defusedxml",
+        "beautifulsoup4",
+    }
 
-    status = check_dep_group("draw")
 
-    assert not status.installed
-    assert "cli-anything-inkscape" in status.missing
+def test_dependency_install_spec_does_not_invent_core_extra():
+    assert _dependency_install_spec("core") == "scholaraio"
+    assert _dependency_install_spec("office") == "scholaraio[office]"
+
+
+def test_wizard_deps_uses_published_core_install_target(monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda *_args, **_kwargs: "y")
+    monkeypatch.setattr(
+        "scholaraio.services.setup.check_dep_group",
+        lambda group: type(
+            "Status",
+            (),
+            {"installed": group != "core", "missing": ["requests"]},
+        )(),
+    )
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args)
+        return type("Result", (), {"returncode": 1, "stderr": ""})()
+
+    monkeypatch.setattr("scholaraio.services.setup.subprocess.run", fake_run)
+
+    _wizard_deps("en")
+
+    out = capsys.readouterr().out
+    assert calls == [[sys.executable, "-m", "pip", "install", "scholaraio"]]
+    assert "pip install scholaraio" in out
+    assert "scholaraio[core]" not in out
 
 
 def test_check_dep_group_treats_oserror_import_failure_as_missing(monkeypatch):
@@ -459,7 +489,7 @@ def test_check_mineru_reports_actionable_failure(monkeypatch):
     ok, detail = _check_mineru(cfg, "zh")
 
     assert ok is False
-    assert "mineru-open-api" in detail
+    assert "scholaraio[mineru-cloud]" in detail
     assert "token" in detail
     assert "Docker" in detail
 
