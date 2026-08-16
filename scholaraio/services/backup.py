@@ -258,11 +258,14 @@ def _preserve_snapshot_parent_metadata(cfg: Config, source: Path, snapshot_root:
     relative_parent = _instance_relative_path(cfg, source.parent)
     source_directory = cfg._root.resolve()
     snapshot_directory = snapshot_root.resolve()
+    directory_pairs: list[tuple[Path, Path]] = []
     for part in relative_parent.parts:
         source_directory /= part
         snapshot_directory /= part
         snapshot_directory.mkdir(exist_ok=True)
+        directory_pairs.append((source_directory, snapshot_directory))
 
+    for source_directory, snapshot_directory in reversed(directory_pairs):
         source_stat = source_directory.stat()
         snapshot_stat = snapshot_directory.stat()
         expected_owner = (source_stat.st_uid, source_stat.st_gid)
@@ -299,7 +302,12 @@ def _snapshot_sqlite_database(cfg: Config, source: Path, snapshot_root: Path, *,
             check = destination_conn.execute("PRAGMA quick_check").fetchone()
             if check != ("ok",):
                 raise sqlite3.DatabaseError(f"quick_check returned {check!r}")
-        os.chmod(destination, source.stat().st_mode & 0o777)
+        source_stat = source.stat()
+        destination_stat = destination.stat()
+        expected_owner = (source_stat.st_uid, source_stat.st_gid)
+        if (destination_stat.st_uid, destination_stat.st_gid) != expected_owner:
+            os.chown(destination, *expected_owner)
+        shutil.copymode(source, destination)
         _preserve_snapshot_parent_metadata(cfg, source, snapshot_root)
     except (OSError, sqlite3.Error, TimeoutError) as exc:
         raise BackupConfigError(f"failed to create consistent SQLite snapshot for {relative}: {exc}") from exc

@@ -337,6 +337,9 @@ def test_prepare_sqlite_snapshots_uses_online_backup_with_active_wal_writer(tmp_
     source_path = tmp_path / "data" / "state" / "search" / "index.db"
     source_path.parent.mkdir(parents=True)
     source_path.parent.chmod(0o700)
+    restricted_parent = source_path.parent.parent
+    restricted_parent.chmod(0o500)
+    snapshot_root = tmp_path / "sqlite-snapshots"
     writer = sqlite3.connect(source_path)
     try:
         writer.execute("PRAGMA journal_mode=WAL")
@@ -345,7 +348,6 @@ def test_prepare_sqlite_snapshots_uses_online_backup_with_active_wal_writer(tmp_
         writer.commit()
         writer.execute("INSERT INTO evidence VALUES ('uncommitted')")
 
-        snapshot_root = tmp_path / "sqlite-snapshots"
         snapshot_paths = _prepare_sqlite_snapshots(cfg, snapshot_root, _instance_component_paths(cfg))
 
         assert snapshot_paths == [Path("data/state/search/index.db")]
@@ -358,9 +360,16 @@ def test_prepare_sqlite_snapshots_uses_online_backup_with_active_wal_writer(tmp_
         assert snapshot_path.parent.stat().st_mode & 0o777 == 0o700
         assert snapshot_path.parent.stat().st_uid == source_path.parent.stat().st_uid
         assert snapshot_path.parent.stat().st_gid == source_path.parent.stat().st_gid
+        assert (snapshot_root / "data" / "state").stat().st_mode & 0o777 == 0o500
+        assert snapshot_path.stat().st_uid == source_path.stat().st_uid
+        assert snapshot_path.stat().st_gid == source_path.stat().st_gid
     finally:
         writer.rollback()
         writer.close()
+        restricted_parent.chmod(0o700)
+        snapshot_state = snapshot_root / "data" / "state"
+        if snapshot_state.exists():
+            snapshot_state.chmod(0o700)
 
 
 def test_fetch_backup_manifest_uses_ssh_and_validates_payload(tmp_path: Path, monkeypatch):
