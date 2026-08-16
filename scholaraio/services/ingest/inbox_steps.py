@@ -365,6 +365,8 @@ def step_extract(ctx: InboxCtx) -> StepResult:
     _ui(f"Title: {(meta.title or '?')[:80]}")
     doi_or_arxiv = meta.doi or (f"arXiv:{meta.arxiv_id}" if meta.arxiv_id else "none")
     _ui(f"Author: {meta.first_author_lastname or '?'} | Year: {meta.year or '?'} | ID: {doi_or_arxiv}")
+    if meta._llm_timed_out and not ctx.opts.get("no_api"):
+        _ui("LLM metadata extraction timed out; resolving the DOI from online scholarly sources")
     ctx.meta = meta
     return StepResult.OK
 
@@ -509,7 +511,17 @@ def step_dedup(ctx: InboxCtx) -> StepResult:
             return StepResult.OK
         # Not thesis/book/patent/arXiv -> move to pending
         _log_debug("no DOI and not thesis/book/patent/arXiv, moving to pending")
-        move_to_pending(ctx)
+        if ctx.meta._llm_timed_out and not ctx.opts.get("no_api"):
+            move_to_pending(
+                ctx,
+                message="LLM extraction timed out and online scholarly sources found no DOI; host-agent review required",
+                extra={
+                    "doi_lookup_reason": "llm_timeout",
+                    "doi_lookup_query": ctx.meta.title,
+                },
+            )
+        else:
+            move_to_pending(ctx)
         ctx.status = "needs_review"
         return StepResult.FAIL
 

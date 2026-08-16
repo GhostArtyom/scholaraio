@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scholaraio.services.ingest_metadata._api import enrich_metadata
+from scholaraio.services.ingest_metadata._api import _query_arxiv_by_title, enrich_metadata
 from scholaraio.services.ingest_metadata._models import PaperMetadata
 
 
@@ -112,6 +112,28 @@ def test_enrich_metadata_ignores_arxiv_datacite_doi_for_preprint(monkeypatch):
     assert meta.extraction_method == "arxiv_lookup"
 
 
+def test_enrich_metadata_recovers_arxiv_id_from_datacite_doi(monkeypatch):
+    seen: dict[str, str] = {}
+
+    def fake_get_arxiv_paper(arxiv_id: str):
+        seen["arxiv_id"] = arxiv_id
+        return {"title": "Official preprint", "arxiv_id": arxiv_id, "doi": ""}
+
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.get_arxiv_paper", fake_get_arxiv_paper)
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_crossref", lambda **kwargs: {})
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_openalex", lambda **kwargs: {})
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_semantic_scholar", lambda **kwargs: {})
+
+    meta = PaperMetadata(title="Local preprint title", doi="10.48550/arXiv.2603.25200")
+
+    enrich_metadata(meta)
+
+    assert seen == {"arxiv_id": "2603.25200"}
+    assert meta.doi == ""
+    assert meta.arxiv_id == "2603.25200"
+    assert meta.extraction_method == "arxiv_lookup"
+
+
 def test_enrich_metadata_uses_s2_title_and_authors_when_arxiv_lookup_returns_only_s2(monkeypatch):
     monkeypatch.setattr("scholaraio.services.ingest_metadata._api.get_arxiv_paper", lambda arxiv_id: {})
     monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_crossref", lambda **kwargs: {})
@@ -194,6 +216,88 @@ def test_enrich_metadata_records_arxiv_as_api_source_when_only_arxiv_lookup_succ
 
     assert meta.api_sources == ["arxiv"]
     assert meta.extraction_method == "arxiv_lookup"
+
+
+def test_enrich_metadata_uses_arxiv_title_lookup_after_llm_timeout(monkeypatch):
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_crossref", lambda **kwargs: {})
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_openalex", lambda **kwargs: {})
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_semantic_scholar", lambda **kwargs: {})
+    monkeypatch.setattr(
+        "scholaraio.services.ingest_metadata._api._query_arxiv_by_title",
+        lambda title: {
+            "title": title,
+            "authors": ["Alice Example"],
+            "year": "2026",
+            "abstract": "Official abstract.",
+            "arxiv_id": "2608.12345v2",
+            "doi": "10.1145/1234567.8901234",
+        },
+    )
+
+    meta = PaperMetadata(
+        title="A Paper Found Online",
+        authors=["Alice Example"],
+        first_author="Alice Example",
+        first_author_lastname="Example",
+        year=2026,
+        _llm_timed_out=True,
+    )
+
+    enrich_metadata(meta)
+
+    assert meta.doi == "10.1145/1234567.8901234"
+    assert meta.arxiv_id == "2608.12345"
+    assert meta.extraction_method == "arxiv_title_search"
+    assert meta.api_sources == ["arxiv"]
+
+
+def test_enrich_metadata_keeps_arxiv_id_but_ignores_datacite_doi_after_timeout(monkeypatch):
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_crossref", lambda **kwargs: {})
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_openalex", lambda **kwargs: {})
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_semantic_scholar", lambda **kwargs: {})
+    monkeypatch.setattr(
+        "scholaraio.services.ingest_metadata._api._query_arxiv_by_title",
+        lambda title: {
+            "title": title,
+            "authors": ["Alice Example"],
+            "year": "2026",
+            "arxiv_id": "2608.12345",
+            "doi": "10.48550/arXiv.2608.12345",
+        },
+    )
+
+    meta = PaperMetadata(title="A Preprint Found Online", _llm_timed_out=True)
+
+    enrich_metadata(meta)
+
+    assert meta.doi == ""
+    assert meta.arxiv_id == "2608.12345"
+    assert meta.extraction_method == "arxiv_title_search"
+
+
+def test_enrich_metadata_does_not_search_arxiv_without_timeout(monkeypatch):
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_crossref", lambda **kwargs: {})
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_openalex", lambda **kwargs: {})
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api.query_semantic_scholar", lambda **kwargs: {})
+    monkeypatch.setattr(
+        "scholaraio.services.ingest_metadata._api._query_arxiv_by_title",
+        lambda _title: (_ for _ in ()).throw(AssertionError("unexpected arXiv lookup")),
+    )
+
+    meta = PaperMetadata(title="A Paper With Invalid LLM JSON")
+
+    enrich_metadata(meta)
+
+    assert meta.extraction_method == "local_only"
+
+
+def test_query_arxiv_by_title_rejects_unrelated_result(monkeypatch):
+    monkeypatch.setattr(
+        "scholaraio.services.ingest_metadata._api.search_arxiv",
+        lambda **kwargs: [{"title": "A Completely Different Paper", "doi": "10.1000/wrong"}],
+    )
+
+    assert _query_arxiv_by_title("A Paper Found Online") == {}
 
 
 def test_enrich_metadata_falls_back_to_crossref_reference_dois_when_s2_references_missing(monkeypatch):

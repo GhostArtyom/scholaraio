@@ -41,7 +41,8 @@ class PaperMetadata:
         extracted_at: 外部内容抓取时间（ISO 8601 字符串）。
         arxiv_id: arXiv 标识符（如 ``2401.12345`` 或 ``hep-th/9901001``，不含版本后缀）。
         extraction_method: 提取方式（``doi_lookup`` | ``arxiv_lookup`` | ``title_search`` |
-            ``title_search_relaxed`` | ``title_search_s2`` | ``local_only``）。
+            ``title_search_relaxed`` | ``title_search_s2`` | ``arxiv_title_search`` |
+            ``local_only``）。
     """
 
     id: str = ""  # UUID, assigned at ingest time
@@ -74,6 +75,7 @@ class PaperMetadata:
     source_type: str = ""
     extracted_at: str = ""
     extraction_method: str = ""
+    _llm_timed_out: bool = field(default=False, repr=False, compare=False)
 
 
 # ============================================================================

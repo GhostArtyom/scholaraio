@@ -20,6 +20,8 @@ If `translate.auto_translate: true` is enabled in config, the pipeline will also
 
 Older roots such as `data/inbox/` and `data/papers/` are migration inputs, not normal runtime inputs. Upgrade them with `scholaraio migrate upgrade --migration-id <id> --confirm` before relying on the current ingest flow.
 
+If the LLM metadata request times out, ingest keeps the regex-extracted title and immediately continues with online scholarly lookup. Crossref, OpenAlex, and Semantic Scholar remain the primary sources. If none resolves a publisher DOI, ScholarAIO searches official arXiv metadata by title, validates the candidate against the local title plus available author/year context, and uses its publisher DOI or arXiv ID. arXiv DataCite identifiers such as `10.48550/arXiv.*` are not treated as publisher DOIs. `--no-api` disables this online fallback.
+
 ## Publisher PDF Fetch
 
 When your current network has legitimate access to a publisher PDF, use `fetch-pdf` instead of manually downloading the file:
@@ -73,6 +75,8 @@ Already have Markdown? Place `.md` files directly in the inbox — PDF parsing i
 ## Pending Papers
 
 Papers without DOI (that aren't theses) go to the configured pending spool (fresh default: `data/spool/pending/`) for manual review. Add a DOI and re-run the pipeline to complete ingestion.
+
+When this follows an LLM timeout and all online scholarly sources also fail, `pending.json` records `doi_lookup_reason: llm_timeout` and the exact `doi_lookup_query`. Agent-driven workflows should use the host agent's native web capabilities to verify the title against a publisher page, DOI.org, Crossref, or official arXiv metadata before supplying a DOI. The pending copy remains intact until a replacement ingest succeeds.
 
 ## External Import
 

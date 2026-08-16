@@ -27,6 +27,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+import requests
+
 _log = logging.getLogger("scholaraio.ingest.extractor")
 
 if TYPE_CHECKING:
@@ -112,6 +114,20 @@ def _clean_llm_str(val) -> str:
     return s
 
 
+def _is_timeout_error(exc: BaseException) -> bool:
+    """Return whether an exception chain represents an LLM request timeout."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (TimeoutError, requests.Timeout)):
+            return True
+        if "timeout" in type(current).__name__.lower() or "timed out" in str(current).lower():
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 class LLMExtractor:
     """纯 LLM 元数据提取器（OpenAI 兼容协议）。
 
@@ -144,9 +160,8 @@ class LLMExtractor:
             data = json.loads(raw_json)
         except Exception as e:
             _log.debug("[LLM] extraction failed: %s, falling back to regex", e)
-            from scholaraio.services.ingest_metadata import extract_metadata_from_markdown
-
-            return extract_metadata_from_markdown(filepath)
+            regex_meta._llm_timed_out = _is_timeout_error(e)
+            return regex_meta
 
         meta = PaperMetadata(source_file=filepath.name)
         meta.title = _clean_llm_str(data.get("title"))
@@ -330,6 +345,7 @@ class RobustExtractor:
             data = json.loads(raw_json)
         except Exception as e:
             _log.debug("[robust] LLM correction failed: %s, using regex result", e)
+            regex_meta._llm_timed_out = _is_timeout_error(e)
             return regex_meta
 
         # Build metadata from LLM response (with null-string cleanup)

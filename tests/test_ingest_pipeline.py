@@ -255,6 +255,71 @@ def test_step_dedup_rejects_duplicate_when_existing_preprint_has_only_arxiv_id_b
     }
 
 
+def test_step_dedup_records_llm_timeout_context_when_online_lookup_fails(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("scholaraio.services.ingest_metadata.enrich_metadata", lambda meta: meta)
+    monkeypatch.setattr("scholaraio.services.ingest.pipeline._detect_patent", lambda ctx: False)
+    monkeypatch.setattr("scholaraio.services.ingest.pipeline._detect_thesis", lambda ctx: False)
+    monkeypatch.setattr("scholaraio.services.ingest.pipeline._detect_book", lambda ctx: False)
+
+    moved: dict[str, object] = {}
+
+    def fake_move_to_pending(ctx, *, issue="no_doi", message="", extra=None):
+        moved.update(issue=issue, message=message, extra=extra or {})
+
+    monkeypatch.setattr("scholaraio.services.ingest.pipeline._move_to_pending", fake_move_to_pending)
+
+    ctx = InboxCtx(
+        pdf_path=None,
+        inbox_dir=tmp_path / "inbox",
+        papers_dir=tmp_path / "papers",
+        existing_dois={},
+        cfg=SimpleNamespace(_root=tmp_path),
+        opts={"no_api": False, "dry_run": False},
+        pending_dir=tmp_path / "pending",
+        meta=PaperMetadata(title="A Paper Found Online", _llm_timed_out=True),
+    )
+
+    result = step_dedup(ctx)
+
+    assert result == StepResult.FAIL
+    assert ctx.status == "needs_review"
+    assert moved["issue"] == "no_doi"
+    assert "online scholarly sources found no DOI" in str(moved["message"])
+    assert moved["extra"] == {
+        "doi_lookup_reason": "llm_timeout",
+        "doi_lookup_query": "A Paper Found Online",
+    }
+
+
+def test_step_dedup_offline_mode_does_not_claim_online_timeout_lookup(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("scholaraio.services.ingest.pipeline._detect_patent", lambda ctx: False)
+    monkeypatch.setattr("scholaraio.services.ingest.pipeline._detect_thesis", lambda ctx: False)
+    monkeypatch.setattr("scholaraio.services.ingest.pipeline._detect_book", lambda ctx: False)
+
+    moved: dict[str, object] = {}
+
+    def fake_move_to_pending(ctx, *, issue="no_doi", message="", extra=None):
+        moved.update(message=message, extra=extra or {})
+
+    monkeypatch.setattr("scholaraio.services.ingest.pipeline._move_to_pending", fake_move_to_pending)
+
+    ctx = InboxCtx(
+        pdf_path=None,
+        inbox_dir=tmp_path / "inbox",
+        papers_dir=tmp_path / "papers",
+        existing_dois={},
+        cfg=SimpleNamespace(_root=tmp_path),
+        opts={"no_api": True, "dry_run": False},
+        pending_dir=tmp_path / "pending",
+        meta=PaperMetadata(title="A Paper Found Online", _llm_timed_out=True),
+    )
+
+    result = step_dedup(ctx)
+
+    assert result == StepResult.FAIL
+    assert moved == {"message": "", "extra": {}}
+
+
 def test_step_office_convert_reports_scholaraio_office_extra(tmp_path: Path, monkeypatch):
     office_path = tmp_path / "report.docx"
     office_path.write_text("dummy", encoding="utf-8")

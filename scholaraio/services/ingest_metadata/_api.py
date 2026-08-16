@@ -11,7 +11,7 @@ from urllib.parse import quote, urlencode, urlparse
 
 import requests
 
-from scholaraio.providers.arxiv import get_arxiv_paper, normalize_arxiv_ref
+from scholaraio.providers.arxiv import get_arxiv_paper, normalize_arxiv_ref, search_arxiv
 
 from ._extract import _extract_lastname
 from ._models import (
@@ -398,6 +398,43 @@ def _search_result_consistent_with_local(meta: PaperMetadata, cr_data: dict, s2_
     return not (author_conflict and year_conflict)
 
 
+def _query_arxiv_by_title(title: str) -> dict:
+    """Return the best exact-title arXiv result for a timed-out extraction."""
+    try:
+        results = search_arxiv(title=title, top_k=5)
+    except Exception as exc:
+        _log.warning("[arXiv-title] %s", exc)
+        return {}
+
+    for item in results:
+        if _fuzzy_title_match(title, item.get("title", "")) >= TITLE_MATCH_THRESHOLD:
+            return item
+    return {}
+
+
+def _arxiv_result_consistent_with_local(meta: PaperMetadata, arxiv_data: dict) -> bool:
+    if meta.title and _fuzzy_title_match(meta.title, arxiv_data.get("title", "")) < TITLE_MATCH_THRESHOLD:
+        return False
+    candidate = {
+        "authors": [{"name": name} for name in arxiv_data.get("authors") or []],
+        "year": arxiv_data.get("year"),
+    }
+    return _search_result_consistent_with_local(meta, {}, candidate, {})
+
+
+def _publisher_doi_from_results(cr_data: dict, s2_data: dict, oa_data: dict) -> str:
+    candidates = [
+        cr_data.get("DOI"),
+        (s2_data.get("externalIds") or {}).get("DOI"),
+        oa_data.get("doi"),
+    ]
+    for candidate in candidates:
+        doi = str(candidate or "").replace("https://doi.org/", "").strip()
+        if doi and not _is_arxiv_datacite_doi(doi):
+            return doi
+    return ""
+
+
 # ============================================================================
 #  Relaxed Queries (Tier 3)
 # ============================================================================
@@ -512,7 +549,8 @@ def enrich_metadata(meta: PaperMetadata) -> PaperMetadata:
       2. **Tier 2** — Crossref + OA 标题搜索（严格匹配 ≥0.85）
       3. **Tier 3** — Crossref + OA 放宽搜索（匹配 ≥0.65）
       4. **Tier 4** — S2 标题搜索（最后手段，可能被限流）
-      5. **Tier 5** — 本地数据（无 API 结果可用）
+      5. **Tier 5** — LLM 超时后按标题查询 arXiv
+      6. **Tier 6** — 本地数据（无 API 结果可用）
 
     合并优先级: Crossref > Semantic Scholar > OpenAlex > 正则提取。
 
@@ -533,7 +571,10 @@ def enrich_metadata(meta: PaperMetadata) -> PaperMetadata:
         if normalized_arxiv_id:
             meta.arxiv_id = normalized_arxiv_id
 
-    if meta.arxiv_id and _is_arxiv_datacite_doi(meta.doi):
+    if _is_arxiv_datacite_doi(meta.doi):
+        if not meta.arxiv_id:
+            raw_arxiv_id = re.sub(r"^10\.48550/arxiv\.", "", meta.doi, flags=re.IGNORECASE)
+            meta.arxiv_id = normalize_arxiv_ref(raw_arxiv_id)
         meta.doi = ""
 
     # ---- Tier 1: DOI lookup (all three, DOI queries are not rate-limited) ----
@@ -632,7 +673,36 @@ def enrich_metadata(meta: PaperMetadata) -> PaperMetadata:
             else:
                 meta.extraction_method = "title_search_s2"
 
-    # ---- Tier 5: local_only ----
+    # ---- Tier 5: timed-out LLM -> official arXiv title lookup ----
+    found_arxiv_id = normalize_arxiv_ref((s2_data.get("externalIds") or {}).get("ArXiv", ""))
+    if (
+        meta._llm_timed_out
+        and meta.title
+        and not _publisher_doi_from_results(cr_data, s2_data, oa_data)
+        and not (meta.arxiv_id or found_arxiv_id)
+    ):
+        _log.info("LLM metadata extraction timed out; querying arXiv by title")
+        arxiv_data = _query_arxiv_by_title(meta.title)
+        if arxiv_data and _arxiv_result_consistent_with_local(meta, arxiv_data):
+            arxiv_metadata_applied = True
+            _apply_arxiv_metadata(meta, arxiv_data)
+
+            if meta.arxiv_id:
+                arxiv_s2_data = query_semantic_scholar(arxiv_id=meta.arxiv_id)
+                if arxiv_s2_data:
+                    s2_data = arxiv_s2_data
+                s2_doi = (arxiv_s2_data.get("externalIds") or {}).get("DOI")
+                if s2_doi and not meta.doi and not _is_arxiv_datacite_doi(s2_doi):
+                    meta.doi = s2_doi
+
+            if meta.doi:
+                cr_data = query_crossref(doi=meta.doi) or cr_data
+                oa_data = query_openalex(doi=meta.doi) or oa_data
+            meta.extraction_method = "arxiv_title_search"
+        elif arxiv_data:
+            _log.debug("arXiv title search mismatch: discarding candidate due to author/year conflict")
+
+    # ---- Tier 6: local_only ----
     if arxiv_metadata_applied and "arxiv" not in meta.api_sources:
         meta.api_sources.append("arxiv")
 

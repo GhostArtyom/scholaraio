@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import requests
+
 from scholaraio.core.config import _build_config
 from scholaraio.services.ingest_metadata.extractor import (
     LLMExtractor,
@@ -86,6 +88,19 @@ class TestLLMExtractor:
 
         assert meta.arxiv_id == "2603.25457"
 
+    def test_marks_timeout_when_falling_back_to_regex(self, tmp_path, monkeypatch):
+        md = tmp_path / "paper.md"
+        md.write_text("# A Paper Found Online\n\nAlice Example\n", encoding="utf-8")
+
+        cfg = _build_config({"llm": {"api_key": "test-key"}}, tmp_path)
+        ext = LLMExtractor(cfg.llm, api_key="test-key")
+        monkeypatch.setattr(ext, "_call_api", lambda _header: (_ for _ in ()).throw(TimeoutError("timed out")))
+
+        meta = ext.extract(md)
+
+        assert meta.title == "A Paper Found Online"
+        assert meta._llm_timed_out is True
+
 
 class TestRobustExtractor:
     def test_preserves_regex_arxiv_id(self, tmp_path, monkeypatch):
@@ -108,6 +123,34 @@ class TestRobustExtractor:
         meta = ext.extract(md)
 
         assert meta.arxiv_id == "2603.25457"
+
+    def test_marks_requests_timeout_for_online_doi_fallback(self, tmp_path, monkeypatch):
+        md = tmp_path / "paper.md"
+        md.write_text("# A Paper Found Online\n\nAlice Example\n", encoding="utf-8")
+
+        cfg = _build_config({"llm": {"api_key": "test-key"}}, tmp_path)
+        ext = RobustExtractor(cfg.llm, api_key="test-key")
+        monkeypatch.setattr(
+            ext,
+            "_call_api",
+            lambda _prompt: (_ for _ in ()).throw(requests.ReadTimeout("read timed out")),
+        )
+
+        meta = ext.extract(md)
+
+        assert meta._llm_timed_out is True
+
+    def test_does_not_mark_non_timeout_failure(self, tmp_path, monkeypatch):
+        md = tmp_path / "paper.md"
+        md.write_text("# A Paper Found Online\n\nAlice Example\n", encoding="utf-8")
+
+        cfg = _build_config({"llm": {"api_key": "test-key"}}, tmp_path)
+        ext = RobustExtractor(cfg.llm, api_key="test-key")
+        monkeypatch.setattr(ext, "_call_api", lambda _prompt: (_ for _ in ()).throw(ValueError("invalid JSON")))
+
+        meta = ext.extract(md)
+
+        assert meta._llm_timed_out is False
 
 
 class TestGetExtractor:

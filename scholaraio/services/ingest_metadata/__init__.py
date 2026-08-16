@@ -3,7 +3,7 @@ metadata — 论文元数据提取、API 查询、JSON 输出与文件重命名
 ==========================================================
 
 从 MinerU 转换的学术论文 markdown 文件中提取元数据（标题、作者、年份、DOI、期刊），
-通过 Crossref / Semantic Scholar / OpenAlex 三个 API 查询引用量、摘要、论文类型，
+通过 Crossref / Semantic Scholar / OpenAlex 查询引用量、摘要、论文类型，并在超时时以 arXiv 兜底，
 输出同名 JSON 元数据文件，并将 md + json 重命名为 {一作}-{年份}-{完整标题} 格式。
 
 子模块:

@@ -57,6 +57,9 @@ scholaraio pipeline <preset> [--dry-run] [--no-api] [--force] [--inspect]
    - `robust`：正则 + LLM 双跑，校正 OCR 错误并处理多 DOI 情况（默认）
    - `llm`：纯 LLM 提取
    - 如果用户问“为什么标题 / 作者 / DOI 提取不准”，先检查这里的模式配置
+   - `robust` / `llm` 的 LLM 请求若明确超时，会保留正则结果并自动进入联网 DOI 兜底：先查 Crossref / OpenAlex / Semantic Scholar，仍无结果时按标题查询官方 arXiv
+   - arXiv 结果必须通过标题以及作者/年份一致性校验；只采用 publisher DOI，不把 `10.48550/arXiv.*` 当作正式发表 DOI
+   - `--no-api` 会关闭上述联网兜底，保持离线语义
 
 5. 论文集（proceedings）采用半自动两阶段流程：
    - 第一阶段：`scholaraio pipeline ingest` 只负责把 PDF/MD 转成 configured proceedings library（fresh 默认 `data/libraries/proceedings/<Volume>/proceeding.md`），并生成 `split_candidates.json`
@@ -106,6 +109,11 @@ scholaraio proceedings apply-clean <proceeding_dir> <clean_plan.json>
    - 来自 `data/spool/inbox/` → LLM 分析判断是否 thesis
      - 是 thesis → 标记并入库
      - 不是 thesis → 转入 `data/spool/pending/` 待人工确认
+   - 如果 `pending.json` 含 `doi_lookup_reason: llm_timeout`：
+     - 当前 agent 必须用宿主原生联网能力按 `doi_lookup_query` 搜索，不要在报告 pending 后停止
+     - 优先核验出版社页面、DOI.org、Crossref 或官方 arXiv 元数据，并对照标题、第一作者和年份；不要只信搜索摘要里的 DOI
+     - 找到 publisher DOI 后优先运行 `scholaraio fetch-pdf <doi> --direct --ingest`；只找到可信 arXiv ID 时运行 `scholaraio arxiv fetch <id> --ingest`
+     - 自动入库成功前保留 pending 原件；成功后向用户报告新记录和仍保留的 pending 路径，避免静默删除可恢复材料
 
 10. 超长 PDF 会在 MinerU 转换前按需自动切分后合并：
    - 本地 MinerU 按 `chunk_page_limit`（默认 >100 页）
