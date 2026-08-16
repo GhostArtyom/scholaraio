@@ -155,6 +155,7 @@ scholaraio backup
 - `style` manages citation styles.
 - `backup` lists configured rsync targets, runs named backup plans, and restores full instance backups.
 - Targets with `scope: data` retain the legacy configured-directory sync. Targets with `scope: instance` preserve config files, data, workspaces, published archives, and instance control metadata under their normal relative paths.
+- Real instance backups stage and verify standalone SQLite online-backup copies instead of transferring live database/WAL/SHM file sets. Connection, idle-I/O, and overall process deadlines are configurable under `backup`.
 - `backup restore <target> --destination <dir>` validates the remote instance manifest before restoring. Non-empty destinations require `--force`.
 - Backup and restore are intentionally non-interactive. Key targets use `BatchMode=yes`; password targets use the internal askpass path instead of waiting for a terminal prompt.
 - Instance backups include `config.local.yaml` when present. Secrets are encrypted in transit by SSH but remain plaintext files on remote storage; environment-only API keys are not captured.

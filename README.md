@@ -149,8 +149,8 @@ ScholarAIO works best through an AI coding agent, but it also provides a CLI for
 
 ```
 scholaraio/             # Python package — CLI and all core modules
-  ingest/               #   PDF parsing + metadata extraction pipeline
-  sources/              #   External source adapters (arXiv / Endnote / Zotero)
+  services/ingest/      #   PDF parsing + metadata extraction pipeline
+  providers/            #   External source adapters (arXiv / Endnote / Zotero)
 
 .claude/skills/         # Agent skills (canonical source)
 .agents/skills/         # ↑ symlink for cross-agent discovery

@@ -224,6 +224,9 @@ class TestBuildConfig:
         assert cfg.backup.source_dir == "data"
         assert cfg.backup.rsync_bin == "rsync"
         assert cfg.backup.ssh_bin == "ssh"
+        assert cfg.backup.connect_timeout_seconds == 15
+        assert cfg.backup.io_timeout_seconds == 300
+        assert cfg.backup.process_timeout_seconds == 86_400
         assert cfg.backup.targets == {}
 
     def test_backup_target_mode_defaults_to_safe_full_sync(self, tmp_path):
@@ -248,6 +251,9 @@ class TestBuildConfig:
             {
                 "backup": {
                     "source_dir": "library-data",
+                    "connect_timeout_seconds": 20,
+                    "io_timeout_seconds": 600,
+                    "process_timeout_seconds": 172800,
                     "targets": {
                         "lab": {
                             "host": "backup.example.com",
@@ -268,6 +274,9 @@ class TestBuildConfig:
         )
 
         assert cfg.backup.source_dir == "library-data"
+        assert cfg.backup.connect_timeout_seconds == 20
+        assert cfg.backup.io_timeout_seconds == 600
+        assert cfg.backup.process_timeout_seconds == 172_800
         assert "lab" in cfg.backup.targets
         target = cfg.backup.targets["lab"]
         assert target.host == "backup.example.com"

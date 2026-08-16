@@ -32,7 +32,6 @@ def cmd_backup(args: argparse.Namespace, cfg) -> None:
     from scholaraio.services.backup import (
         BackupConfigError,
         build_restore_command,
-        build_rsync_command,
         fetch_backup_manifest,
         run_backup,
         run_restore,
@@ -58,15 +57,22 @@ def cmd_backup(args: argparse.Namespace, cfg) -> None:
 
     if action == "run":
         try:
-            cmd = build_rsync_command(cfg, args.target, dry_run=args.dry_run)
             target = cfg.backup.targets.get(args.target)
             if target and target.scope == "instance":
                 ui(
                     "Instance backup includes config.local.yaml when present. Secrets are encrypted in transit by SSH but stored as files on the remote target."
                 )
-            ui("About to run backup command: ")
-            ui("  " + shlex.join(cmd))
-            result = run_backup(cfg, args.target, dry_run=args.dry_run)
+
+            def announce_command(command: list[str]) -> None:
+                ui("About to run backup command: ")
+                ui("  " + shlex.join(command))
+
+            result = run_backup(
+                cfg,
+                args.target,
+                dry_run=args.dry_run,
+                on_command=announce_command,
+            )
         except BackupConfigError as exc:
             _log_error("%s", exc)
             sys.exit(1)

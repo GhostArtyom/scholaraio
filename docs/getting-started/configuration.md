@@ -79,6 +79,9 @@ confirmation is never interactive.
 ```yaml
 backup:
   source_dir: data
+  connect_timeout_seconds: 15
+  io_timeout_seconds: 300
+  process_timeout_seconds: 86400
   targets:
     lab:
       host: backup.example.com
@@ -93,11 +96,13 @@ backup:
 ```
 
 - `scope` supports `data` and `instance`; it defaults to `data` for backward compatibility.
+- `connect_timeout_seconds` bounds SSH connection setup, `io_timeout_seconds` bounds idle rsync I/O and SSH keepalive detection, and `process_timeout_seconds` bounds each rsync/SSH subprocess.
 - `mode` supports `default`, `append`, and `append-verify`.
 - Use `default` for the full ScholarAIO `data/` tree, especially when it includes mutable files such as SQLite databases.
 - Reserve `append` / `append-verify` for append-only artifacts where the remote copy is expected to be a prefix of the local file.
 - `instance` requires `mode: default`, does not accept `exclude`, and should use a dedicated empty remote directory.
 - Subsequent `instance` runs mirror deletions inside the backed-up component trees, preventing removed papers or metadata from reappearing after restore.
+- Real `instance` runs use SQLite's online backup API plus `quick_check` for recognized `.db`, `.sqlite`, and `.sqlite3` files. WAL/SHM/journal sidecars are not restored; each database snapshot is consistent even if a writer remains active.
 - Keep host-specific secrets such as `identity_file` in `config.local.yaml` when possible.
 - Prepare SSH key-based authentication and the target host's `known_hosts` entry ahead of time; otherwise `backup run` will fail fast instead of waiting for interactive input.
 - `config.local.yaml` is sent through encrypted SSH and keeps owner-only file permissions, but its API keys and passwords remain plaintext at rest on the backup server. Protect the remote account and storage accordingly.
