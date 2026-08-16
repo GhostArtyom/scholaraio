@@ -97,6 +97,7 @@ backup:
 - Use `default` for the full ScholarAIO `data/` tree, especially when it includes mutable files such as SQLite databases.
 - Reserve `append` / `append-verify` for append-only artifacts where the remote copy is expected to be a prefix of the local file.
 - `instance` requires `mode: default`, does not accept `exclude`, and should use a dedicated empty remote directory.
+- Subsequent `instance` runs mirror deletions inside the backed-up component trees, preventing removed papers or metadata from reappearing after restore.
 - Keep host-specific secrets such as `identity_file` in `config.local.yaml` when possible.
 - Prepare SSH key-based authentication and the target host's `known_hosts` entry ahead of time; otherwise `backup run` will fail fast instead of waiting for interactive input.
 - `config.local.yaml` is sent through encrypted SSH and keeps owner-only file permissions, but its API keys and passwords remain plaintext at rest on the backup server. Protect the remote account and storage accordingly.

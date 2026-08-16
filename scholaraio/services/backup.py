@@ -226,7 +226,10 @@ def build_rsync_command(cfg: Config, target_name: str, *, dry_run: bool = False)
 
     if target.scope == "instance":
         _validate_instance_target(target)
-        cmd.append("--relative")
+        # A restorable instance target represents the current runtime state.
+        # Mirror deletions inside each component so removed papers or metadata
+        # cannot reappear from stale remote files during a later restore.
+        cmd.extend(["--relative", "--delete"])
         sources = [_relative_rsync_source(cfg, path) for path in _instance_component_paths(cfg)]
     else:
         for pattern in target.exclude:

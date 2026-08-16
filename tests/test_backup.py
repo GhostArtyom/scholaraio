@@ -170,6 +170,7 @@ def test_build_instance_rsync_command_preserves_runtime_layout(tmp_path: Path):
     cmd = build_rsync_command(cfg, "instance", dry_run=True)
 
     assert "--relative" in cmd
+    assert "--delete" in cmd
     assert "--dry-run" in cmd
     assert f"{tmp_path.resolve()}/./config.yaml" in cmd
     assert f"{tmp_path.resolve()}/./config.local.yaml" in cmd
@@ -410,7 +411,8 @@ def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
     paper = instance_root / "data" / "libraries" / "papers" / "paper-1"
     paper.mkdir()
     (paper / "paper.pdf").write_bytes(b"pdf")
-    (paper / "paper.md").write_text("paper", encoding="utf-8")
+    paper_markdown = paper / "paper.md"
+    paper_markdown.write_text("paper", encoding="utf-8")
     (paper / "meta.json").write_text('{"title": "Paper"}\n', encoding="utf-8")
     (instance_root / "workspace" / "review" / "notes.md").write_text("notes", encoding="utf-8")
     _write_instance_manifest(cfg)
@@ -424,6 +426,11 @@ def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
         f"{remote_root}/",
     ]
     subprocess.run(local_backup_cmd, check=True, capture_output=True, text=True)
+
+    paper_markdown.unlink()
+    subprocess.run(local_backup_cmd, check=True, capture_output=True, text=True)
+    assert not (remote_root / "data" / "libraries" / "papers" / "paper-1" / "paper.md").exists()
+
     (remote_root / "unrelated.txt").write_text("ignore", encoding="utf-8")
 
     manifest = json.loads((remote_root / ".scholaraio-control" / "backup-manifest.json").read_text(encoding="utf-8"))
@@ -440,6 +447,7 @@ def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
     assert (restore_root / "config.yaml").exists()
     assert (restore_root / "config.local.yaml").exists()
     assert (restore_root / "data" / "libraries" / "papers" / "paper-1" / "paper.pdf").read_bytes() == b"pdf"
+    assert not (restore_root / "data" / "libraries" / "papers" / "paper-1" / "paper.md").exists()
     assert (restore_root / "workspace" / "review" / "notes.md").read_text(encoding="utf-8") == "notes"
     assert not (restore_root / "unrelated.txt").exists()
 

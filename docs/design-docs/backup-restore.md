@@ -29,6 +29,8 @@ published/                 # configured published archive root
 
 Configured component roots must resolve inside the runtime-instance root. Unknown files below included directories are preserved because rsync copies whole trees. Instance targets require `mode: default` and reject exclude patterns.
 
+Each subsequent instance backup mirrors deletions within those component trees, so a paper or metadata file removed locally does not survive remotely and reappear during restore. Files outside the manifest-listed component roots are not part of the instance contract.
+
 The versioned manifest records the relative component paths and their file/directory types. Restore fetches and validates this manifest before copying anything. Absolute paths and traversal components are rejected, and data-only targets cannot be restored as full instances.
 
 ## Restore Safety
