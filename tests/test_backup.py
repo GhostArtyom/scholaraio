@@ -336,6 +336,7 @@ def test_prepare_sqlite_snapshots_uses_online_backup_with_active_wal_writer(tmp_
     cfg = _build_instance_cfg(tmp_path)
     source_path = tmp_path / "data" / "state" / "search" / "index.db"
     source_path.parent.mkdir(parents=True)
+    source_path.parent.chmod(0o700)
     writer = sqlite3.connect(source_path)
     try:
         writer.execute("PRAGMA journal_mode=WAL")
@@ -354,6 +355,9 @@ def test_prepare_sqlite_snapshots_uses_online_backup_with_active_wal_writer(tmp_
             assert snapshot.execute("SELECT value FROM evidence").fetchall() == [("committed",)]
         assert not (snapshot_path.parent / "index.db-wal").exists()
         assert not (snapshot_path.parent / "index.db-shm").exists()
+        assert snapshot_path.parent.stat().st_mode & 0o777 == 0o700
+        assert snapshot_path.parent.stat().st_uid == source_path.parent.stat().st_uid
+        assert snapshot_path.parent.stat().st_gid == source_path.parent.stat().st_gid
     finally:
         writer.rollback()
         writer.close()
@@ -475,6 +479,36 @@ def test_restore_rejects_corrupt_listed_sqlite_database(tmp_path: Path, monkeypa
         run_restore(cfg, "instance", destination, manifest=manifest)
 
 
+def test_restore_removes_stale_sqlite_sidecars_before_validation(tmp_path: Path, monkeypatch):
+    from scholaraio.services.backup import run_restore
+
+    cfg = _build_instance_cfg(tmp_path)
+    destination = tmp_path / "restore"
+    manifest = _instance_manifest()
+    manifest["sqlite_databases"] = ["data/state/search/index.db"]
+
+    def fake_run(cmd, **_kwargs):
+        database = destination / "data" / "state" / "search" / "index.db"
+        database.parent.mkdir(parents=True)
+        with sqlite3.connect(database) as connection:
+            connection.execute("CREATE TABLE evidence (value TEXT NOT NULL)")
+            connection.execute("INSERT INTO evidence VALUES ('restored')")
+        for suffix in ("-wal", "-shm", "-journal"):
+            database.with_name(f"{database.name}{suffix}").write_bytes(b"stale")
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("scholaraio.services.backup.subprocess.run", fake_run)
+
+    result = run_restore(cfg, "instance", destination, force=True, manifest=manifest)
+
+    assert result.returncode == 0
+    database = destination / "data" / "state" / "search" / "index.db"
+    for suffix in ("-wal", "-shm", "-journal"):
+        assert not database.with_name(f"{database.name}{suffix}").exists()
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT value FROM evidence").fetchall() == [("restored",)]
+
+
 @pytest.mark.skipif(shutil.which("rsync") is None, reason="rsync is required")
 def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
     from scholaraio.services.backup import (
@@ -498,6 +532,7 @@ def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
 
     sqlite_path = instance_root / "data" / "state" / "search" / "index.db"
     sqlite_path.parent.mkdir(parents=True)
+    sqlite_path.parent.chmod(0o700)
     writer = sqlite3.connect(sqlite_path)
     writer.execute("PRAGMA journal_mode=WAL")
     writer.execute("CREATE TABLE evidence (value TEXT NOT NULL)")
@@ -528,6 +563,7 @@ def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
     with sqlite3.connect(remote_root / "data" / "state" / "search" / "index.db") as remote_db:
         assert remote_db.execute("PRAGMA quick_check").fetchone() == ("ok",)
         assert remote_db.execute("SELECT value FROM evidence").fetchall() == [("snapshot-state",)]
+    assert (remote_root / "data" / "state" / "search").stat().st_mode & 0o777 == 0o700
 
     paper_markdown.unlink()
     remote_wal = remote_root / "data" / "state" / "search" / "index.db-wal"
@@ -558,6 +594,7 @@ def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
     with sqlite3.connect(restore_root / "data" / "state" / "search" / "index.db") as restored_db:
         assert restored_db.execute("PRAGMA quick_check").fetchone() == ("ok",)
         assert restored_db.execute("SELECT value FROM evidence").fetchall() == [("snapshot-state",)]
+    assert (restore_root / "data" / "state" / "search").stat().st_mode & 0o777 == 0o700
     assert (restore_root / "workspace" / "review" / "notes.md").read_text(encoding="utf-8") == "notes"
     assert not (restore_root / "unrelated.txt").exists()
 

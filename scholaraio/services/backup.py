@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import sqlite3
 import subprocess
 import tempfile
@@ -252,6 +253,29 @@ def _discover_sqlite_databases(cfg: Config, components: Sequence[Path]) -> list[
     return [discovered[path] for path in sorted(discovered, key=lambda item: item.as_posix())]
 
 
+def _preserve_snapshot_parent_metadata(cfg: Config, source: Path, snapshot_root: Path) -> None:
+    """Make staged implied directories match their live instance counterparts."""
+    relative_parent = _instance_relative_path(cfg, source.parent)
+    source_directory = cfg._root.resolve()
+    snapshot_directory = snapshot_root.resolve()
+    for part in relative_parent.parts:
+        source_directory /= part
+        snapshot_directory /= part
+        snapshot_directory.mkdir(exist_ok=True)
+
+        source_stat = source_directory.stat()
+        snapshot_stat = snapshot_directory.stat()
+        expected_owner = (source_stat.st_uid, source_stat.st_gid)
+        if (snapshot_stat.st_uid, snapshot_stat.st_gid) != expected_owner:
+            try:
+                os.chown(snapshot_directory, *expected_owner)
+            except OSError as exc:
+                raise BackupConfigError(
+                    f"failed to preserve SQLite snapshot directory ownership for {relative_parent}: {exc}"
+                ) from exc
+        shutil.copystat(source_directory, snapshot_directory)
+
+
 def _snapshot_sqlite_database(cfg: Config, source: Path, snapshot_root: Path, *, timeout_seconds: int) -> Path:
     relative = _instance_relative_path(cfg, source)
     destination = snapshot_root / relative
@@ -276,6 +300,7 @@ def _snapshot_sqlite_database(cfg: Config, source: Path, snapshot_root: Path, *,
             if check != ("ok",):
                 raise sqlite3.DatabaseError(f"quick_check returned {check!r}")
         os.chmod(destination, source.stat().st_mode & 0o777)
+        _preserve_snapshot_parent_metadata(cfg, source, snapshot_root)
     except (OSError, sqlite3.Error, TimeoutError) as exc:
         raise BackupConfigError(f"failed to create consistent SQLite snapshot for {relative}: {exc}") from exc
     return relative
@@ -554,12 +579,15 @@ def _validate_restored_sqlite_databases(restore_root: Path, manifest: Mapping[st
         if not database.is_file():
             raise BackupConfigError(f"restored SQLite database is missing: {relative}")
         try:
-            source_uri = f"{database.as_uri()}?mode=ro"
+            for suffix in SQLITE_TRANSIENT_SUFFIXES:
+                sidecar = database.with_name(f"{database.name}{suffix}")
+                sidecar.unlink(missing_ok=True)
+            source_uri = f"{database.as_uri()}?mode=ro&immutable=1"
             with closing(sqlite3.connect(source_uri, uri=True)) as connection:
                 check = connection.execute("PRAGMA quick_check").fetchone()
             if check != ("ok",):
                 raise sqlite3.DatabaseError(f"quick_check returned {check!r}")
-        except sqlite3.Error as exc:
+        except (OSError, sqlite3.Error) as exc:
             raise BackupConfigError(f"restored SQLite database failed validation: {relative}: {exc}") from exc
 
 
