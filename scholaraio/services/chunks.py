@@ -88,7 +88,7 @@ def iter_paper_chunks(paper_dir: Path, *, target_chars: int = 4800, meta: dict |
     title = meta.get("title") or paper_dir.name
     year = str(meta.get("year") or "")
     journal = str(meta.get("journal") or "")
-    paper_type = normalize_paper_type(meta.get("paper_type"), meta.get("journal"), meta.get("doi"))
+    paper_type = normalize_paper_type(meta.get("paper_type"))
     sections = _sections_from_toc(meta, lines) or _sections_from_headings(title, lines)
 
     chunks: list[PaperChunk] = []
