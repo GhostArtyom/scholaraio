@@ -276,10 +276,29 @@ class TestBuildConfig:
         assert target.port == 2222
         assert target.identity_file == "keys/id_ed25519"
         assert target.password == "secret"
+        assert target.scope == "data"
         assert target.mode == "append-verify"
         assert target.compress is False
         assert target.enabled is True
         assert target.exclude == ["*.tmp", "metrics.db"]
+
+    def test_backup_target_scope_accepts_instance(self, tmp_path):
+        cfg = _build_config(
+            {
+                "backup": {
+                    "targets": {
+                        "archive": {
+                            "host": "backup.example.com",
+                            "path": "/srv/scholaraio-instance",
+                            "scope": "INSTANCE",
+                        }
+                    }
+                }
+            },
+            tmp_path,
+        )
+
+        assert cfg.backup.targets["archive"].scope == "instance"
 
     def test_backup_source_dir_expands_user_home(self, tmp_path):
         cfg = _build_config({"backup": {"source_dir": "~/scholaraio-backup-source"}}, tmp_path)
