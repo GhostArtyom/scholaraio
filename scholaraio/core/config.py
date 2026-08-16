@@ -394,12 +394,18 @@ class BackupConfig:
         source_dir: Local directory to sync, relative to config root by default.
         rsync_bin: Rsync executable name or absolute path.
         ssh_bin: SSH executable name or absolute path.
+        connect_timeout_seconds: SSH connection timeout.
+        io_timeout_seconds: Maximum rsync I/O idle interval.
+        process_timeout_seconds: Overall subprocess deadline.
         targets: Named remote backup targets.
     """
 
     source_dir: str = "data"
     rsync_bin: str = "rsync"
     ssh_bin: str = "ssh"
+    connect_timeout_seconds: int = 15
+    io_timeout_seconds: int = 300
+    process_timeout_seconds: int = 86_400
     targets: dict[str, BackupTargetConfig] = field(default_factory=dict)
 
 
@@ -1222,6 +1228,21 @@ def _build_config(data: dict, root: Path) -> Config:
         source_dir=str(backup_data.get("source_dir") or "data").strip() or "data",
         rsync_bin=str(backup_data.get("rsync_bin") or "rsync").strip() or "rsync",
         ssh_bin=str(backup_data.get("ssh_bin") or "ssh").strip() or "ssh",
+        connect_timeout_seconds=_normalize_positive_int(
+            backup_data.get("connect_timeout_seconds"),
+            default=15,
+            field_name="backup.connect_timeout_seconds",
+        ),
+        io_timeout_seconds=_normalize_positive_int(
+            backup_data.get("io_timeout_seconds"),
+            default=300,
+            field_name="backup.io_timeout_seconds",
+        ),
+        process_timeout_seconds=_normalize_positive_int(
+            backup_data.get("process_timeout_seconds"),
+            default=86_400,
+            field_name="backup.process_timeout_seconds",
+        ),
         targets=targets,
     )
 

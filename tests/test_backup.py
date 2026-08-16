@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 import subprocess
 from argparse import Namespace
 from pathlib import Path
@@ -91,6 +92,7 @@ def test_build_rsync_command_uses_configured_target_and_flags(tmp_path: Path):
     assert "-a" in cmd
     assert "-z" in cmd
     assert "--append-verify" in cmd
+    assert "--timeout=300" in cmd
     assert "--dry-run" in cmd
     assert "--exclude" in cmd
     assert cmd[-1] == "alice@backup.example.com:/srv/scholaraio/"
@@ -100,6 +102,9 @@ def test_build_rsync_command_uses_configured_target_and_flags(tmp_path: Path):
     assert "ssh" in ssh_cmd
     assert "-p 2222" in ssh_cmd
     assert "-o BatchMode=yes" in ssh_cmd
+    assert "-o ConnectTimeout=15" in ssh_cmd
+    assert "-o ServerAliveInterval=60" in ssh_cmd
+    assert "-o ServerAliveCountMax=3" in ssh_cmd
     assert f"-i {(tmp_path / 'secrets' / 'id_ed25519').resolve()}" in ssh_cmd
 
 
@@ -166,11 +171,19 @@ def test_build_instance_rsync_command_preserves_runtime_layout(tmp_path: Path):
     from scholaraio.services.backup import build_rsync_command
 
     cfg = _build_instance_cfg(tmp_path)
+    sqlite_path = tmp_path / "data" / "state" / "search" / "index.db"
+    sqlite_path.parent.mkdir(parents=True)
+    with sqlite3.connect(sqlite_path) as connection:
+        connection.execute("CREATE TABLE evidence (value TEXT)")
 
     cmd = build_rsync_command(cfg, "instance", dry_run=True)
 
     assert "--relative" in cmd
     assert "--delete" in cmd
+    assert "--delete-excluded" in cmd
+    assert "--exclude=/data/state/search/index.db-wal" in cmd
+    assert "--exclude=/data/state/search/index.db-shm" in cmd
+    assert "--exclude=/data/state/search/index.db-journal" in cmd
     assert "--dry-run" in cmd
     assert f"{tmp_path.resolve()}/./config.yaml" in cmd
     assert f"{tmp_path.resolve()}/./config.local.yaml" in cmd
@@ -206,6 +219,7 @@ def test_run_backup_invokes_subprocess_with_planned_command(tmp_path: Path, monk
         assert check is False
         assert text is True
         assert kwargs.get("capture_output") is True
+        assert kwargs.get("timeout") == 86_400
         return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
 
     monkeypatch.setattr("scholaraio.services.backup.subprocess.run", fake_run)
@@ -229,6 +243,21 @@ def test_run_backup_reports_missing_rsync_binary_as_config_error(tmp_path: Path,
 
     with pytest.raises(BackupConfigError, match="failed to execute rsync"):
         run_backup(cfg, "lab", dry_run=False)
+
+
+def test_run_backup_reports_process_timeout_as_config_error(tmp_path: Path, monkeypatch):
+    from scholaraio.services.backup import BackupConfigError, run_backup
+
+    cfg = _build_backup_cfg(tmp_path)
+    cfg.backup.process_timeout_seconds = 42
+
+    def fake_run(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+
+    monkeypatch.setattr("scholaraio.services.backup.subprocess.run", fake_run)
+
+    with pytest.raises(BackupConfigError, match="timed out after 42 seconds"):
+        run_backup(cfg, "lab")
 
 
 def test_run_backup_uses_askpass_env_for_password_targets(tmp_path: Path, monkeypatch):
@@ -299,6 +328,35 @@ def test_run_instance_backup_writes_versioned_manifest(tmp_path: Path, monkeypat
 
     assert result.returncode == 0
     assert (tmp_path / ".scholaraio-control" / "backup-manifest.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_prepare_sqlite_snapshots_uses_online_backup_with_active_wal_writer(tmp_path: Path):
+    from scholaraio.services.backup import _instance_component_paths, _prepare_sqlite_snapshots
+
+    cfg = _build_instance_cfg(tmp_path)
+    source_path = tmp_path / "data" / "state" / "search" / "index.db"
+    source_path.parent.mkdir(parents=True)
+    writer = sqlite3.connect(source_path)
+    try:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("CREATE TABLE evidence (value TEXT NOT NULL)")
+        writer.execute("INSERT INTO evidence VALUES ('committed')")
+        writer.commit()
+        writer.execute("INSERT INTO evidence VALUES ('uncommitted')")
+
+        snapshot_root = tmp_path / "sqlite-snapshots"
+        snapshot_paths = _prepare_sqlite_snapshots(cfg, snapshot_root, _instance_component_paths(cfg))
+
+        assert snapshot_paths == [Path("data/state/search/index.db")]
+        snapshot_path = snapshot_root / snapshot_paths[0]
+        with sqlite3.connect(snapshot_path) as snapshot:
+            assert snapshot.execute("PRAGMA quick_check").fetchone() == ("ok",)
+            assert snapshot.execute("SELECT value FROM evidence").fetchall() == [("committed",)]
+        assert not (snapshot_path.parent / "index.db-wal").exists()
+        assert not (snapshot_path.parent / "index.db-shm").exists()
+    finally:
+        writer.rollback()
+        writer.close()
 
 
 def test_fetch_backup_manifest_uses_ssh_and_validates_payload(tmp_path: Path, monkeypatch):
@@ -397,9 +455,31 @@ def test_restore_sets_local_config_permissions_to_owner_only(tmp_path: Path, mon
     assert (destination / "config.local.yaml").stat().st_mode & 0o777 == 0o600
 
 
+def test_restore_rejects_corrupt_listed_sqlite_database(tmp_path: Path, monkeypatch):
+    from scholaraio.services.backup import BackupConfigError, run_restore
+
+    cfg = _build_instance_cfg(tmp_path)
+    destination = tmp_path / "restore"
+    manifest = _instance_manifest()
+    manifest["sqlite_databases"] = ["data/state/search/index.db"]
+
+    def fake_run(cmd, **_kwargs):
+        database = destination / "data" / "state" / "search" / "index.db"
+        database.parent.mkdir(parents=True)
+        database.write_bytes(b"not sqlite")
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("scholaraio.services.backup.subprocess.run", fake_run)
+
+    with pytest.raises(BackupConfigError, match="failed validation"):
+        run_restore(cfg, "instance", destination, manifest=manifest)
+
+
 @pytest.mark.skipif(shutil.which("rsync") is None, reason="rsync is required")
 def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
     from scholaraio.services.backup import (
+        _instance_component_paths,
+        _prepare_sqlite_snapshots,
         _write_instance_manifest,
         build_restore_command,
         build_rsync_command,
@@ -415,10 +495,29 @@ def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
     paper_markdown.write_text("paper", encoding="utf-8")
     (paper / "meta.json").write_text('{"title": "Paper"}\n', encoding="utf-8")
     (instance_root / "workspace" / "review" / "notes.md").write_text("notes", encoding="utf-8")
-    _write_instance_manifest(cfg)
+
+    sqlite_path = instance_root / "data" / "state" / "search" / "index.db"
+    sqlite_path.parent.mkdir(parents=True)
+    writer = sqlite3.connect(sqlite_path)
+    writer.execute("PRAGMA journal_mode=WAL")
+    writer.execute("CREATE TABLE evidence (value TEXT NOT NULL)")
+    writer.execute("INSERT INTO evidence VALUES ('snapshot-state')")
+    writer.commit()
+
+    snapshot_root = tmp_path / "sqlite-snapshots"
+    snapshot_paths = _prepare_sqlite_snapshots(cfg, snapshot_root, _instance_component_paths(cfg))
+    _write_instance_manifest(cfg, sqlite_databases=snapshot_paths)
+
+    writer.execute("INSERT INTO evidence VALUES ('live-after-snapshot')")
+    writer.commit()
 
     remote_root = tmp_path / "remote"
-    backup_cmd = build_rsync_command(cfg, "instance")
+    backup_cmd = build_rsync_command(
+        cfg,
+        "instance",
+        sqlite_snapshot_root=snapshot_root,
+        sqlite_snapshot_paths=snapshot_paths,
+    )
     shell_index = backup_cmd.index("-e")
     local_backup_cmd = [
         *backup_cmd[:shell_index],
@@ -426,14 +525,22 @@ def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
         f"{remote_root}/",
     ]
     subprocess.run(local_backup_cmd, check=True, capture_output=True, text=True)
+    with sqlite3.connect(remote_root / "data" / "state" / "search" / "index.db") as remote_db:
+        assert remote_db.execute("PRAGMA quick_check").fetchone() == ("ok",)
+        assert remote_db.execute("SELECT value FROM evidence").fetchall() == [("snapshot-state",)]
 
     paper_markdown.unlink()
+    remote_wal = remote_root / "data" / "state" / "search" / "index.db-wal"
+    remote_wal.write_bytes(b"stale")
     subprocess.run(local_backup_cmd, check=True, capture_output=True, text=True)
+    writer.close()
     assert not (remote_root / "data" / "libraries" / "papers" / "paper-1" / "paper.md").exists()
+    assert not remote_wal.exists()
 
     (remote_root / "unrelated.txt").write_text("ignore", encoding="utf-8")
 
     manifest = json.loads((remote_root / ".scholaraio-control" / "backup-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["sqlite_databases"] == ["data/state/search/index.db"]
     restore_root = tmp_path / "restored"
     restore_cmd = build_restore_command(cfg, "instance", restore_root, manifest=manifest)
     shell_index = restore_cmd.index("-e")
@@ -448,6 +555,9 @@ def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
     assert (restore_root / "config.local.yaml").exists()
     assert (restore_root / "data" / "libraries" / "papers" / "paper-1" / "paper.pdf").read_bytes() == b"pdf"
     assert not (restore_root / "data" / "libraries" / "papers" / "paper-1" / "paper.md").exists()
+    with sqlite3.connect(restore_root / "data" / "state" / "search" / "index.db") as restored_db:
+        assert restored_db.execute("PRAGMA quick_check").fetchone() == ("ok",)
+        assert restored_db.execute("SELECT value FROM evidence").fetchall() == [("snapshot-state",)]
     assert (restore_root / "workspace" / "review" / "notes.md").read_text(encoding="utf-8") == "notes"
     assert not (restore_root / "unrelated.txt").exists()
 
@@ -499,13 +609,14 @@ def test_cmd_backup_restore_reports_dry_run_completion(tmp_path: Path, monkeypat
 def test_cmd_backup_run_reports_dry_run_completion(tmp_path: Path, monkeypatch):
     messages: list[str] = []
     monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
-    monkeypatch.setattr(
-        "scholaraio.services.backup.build_rsync_command",
-        lambda *_args, **_kwargs: ["rsync", "-a", "/src/", "alice@host:/dst/"],
-    )
+
+    def fake_run_backup(*_args, on_command=None, **_kwargs):
+        on_command(["rsync", "-a", "/src/", "alice@host:/dst/"])
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
     monkeypatch.setattr(
         "scholaraio.services.backup.run_backup",
-        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+        fake_run_backup,
     )
 
     cli.cmd_backup(Namespace(backup_action="run", target="lab", dry_run=True), _build_backup_cfg(tmp_path))
@@ -517,20 +628,23 @@ def test_cmd_backup_run_reports_dry_run_completion(tmp_path: Path, monkeypatch):
 def test_cmd_backup_run_displays_shell_quoted_preview(tmp_path: Path, monkeypatch):
     messages: list[str] = []
     monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
-    monkeypatch.setattr(
-        "scholaraio.services.backup.build_rsync_command",
-        lambda *_args, **_kwargs: [
-            "rsync",
-            "-a",
-            "-e",
-            "ssh -p 2222 -i /tmp/test key",
-            "/src/",
-            "alice@host:/dst/",
-        ],
-    )
+
+    def fake_run_backup(*_args, on_command=None, **_kwargs):
+        on_command(
+            [
+                "rsync",
+                "-a",
+                "-e",
+                "ssh -p 2222 -i /tmp/test key",
+                "/src/",
+                "alice@host:/dst/",
+            ]
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
     monkeypatch.setattr(
         "scholaraio.services.backup.run_backup",
-        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+        fake_run_backup,
     )
 
     cli.cmd_backup(Namespace(backup_action="run", target="lab", dry_run=True), _build_backup_cfg(tmp_path))
@@ -546,13 +660,14 @@ def test_cmd_backup_run_exits_cleanly_when_backup_runtime_error_occurs(tmp_path:
     errors: list[str] = []
     monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
     monkeypatch.setattr(cli._log, "error", lambda msg, *args: errors.append(msg % args if args else msg))
-    monkeypatch.setattr(
-        "scholaraio.services.backup.build_rsync_command",
-        lambda *_args, **_kwargs: ["missing-rsync", "-a", "/src/", "alice@host:/dst/"],
-    )
+
+    def fake_run_backup(*_args, on_command=None, **_kwargs):
+        on_command(["missing-rsync", "-a", "/src/", "alice@host:/dst/"])
+        raise BackupConfigError("failed to execute rsync")
+
     monkeypatch.setattr(
         "scholaraio.services.backup.run_backup",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(BackupConfigError("failed to execute rsync")),
+        fake_run_backup,
     )
 
     with pytest.raises(SystemExit, match="1"):

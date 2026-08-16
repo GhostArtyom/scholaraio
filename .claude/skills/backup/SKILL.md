@@ -65,6 +65,8 @@ backup:
 建议：
 
 - `scope: data` 只同步 `source_dir`，保持旧行为；`scope: instance` 同步 config、data、workspace、published 和 control metadata，并生成恢复清单
+- 真实 `instance` 备份会对组件树中的 `.db` / `.sqlite` / `.sqlite3` 使用 SQLite online backup，并在传输前执行 `quick_check`；不会把 live WAL/SHM/journal sidecar 当作恢复数据
+- `connect_timeout_seconds`、`io_timeout_seconds`、`process_timeout_seconds` 分别限制 SSH 建连、空闲 I/O 和单个外部进程总时长
 - 共享配置写在 `config.yaml`
 - 主机相关或敏感项优先放 `config.local.yaml`
 - 备份整棵 `data/` 目录时优先使用 `default`

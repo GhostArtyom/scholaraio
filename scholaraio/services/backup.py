@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import sqlite3
 import subprocess
 import tempfile
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -19,6 +22,9 @@ from scholaraio.core.config import BackupTargetConfig, Config
 INSTANCE_BACKUP_KIND = "scholaraio-instance-backup"
 INSTANCE_BACKUP_SCHEMA_VERSION = 1
 INSTANCE_MANIFEST_RELATIVE_PATH = PurePosixPath(".scholaraio-control/backup-manifest.json")
+SQLITE_HEADER = b"SQLite format 3\x00"
+SQLITE_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
+SQLITE_TRANSIENT_SUFFIXES = ("-wal", "-shm", "-journal")
 
 
 class BackupConfigError(ValueError):
@@ -59,6 +65,17 @@ def _resolve_identity_file(cfg: Config, identity_file: str) -> str:
 
 def _build_remote_shell_parts(cfg: Config, target: BackupTargetConfig) -> list[str]:
     parts = [cfg.backup.ssh_bin]
+    keepalive_interval = min(60, cfg.backup.io_timeout_seconds)
+    parts.extend(
+        [
+            "-o",
+            f"ConnectTimeout={cfg.backup.connect_timeout_seconds}",
+            "-o",
+            f"ServerAliveInterval={keepalive_interval}",
+            "-o",
+            "ServerAliveCountMax=3",
+        ]
+    )
     if target.password:
         parts.extend(
             [
@@ -130,7 +147,13 @@ def _validate_instance_target(target: BackupTargetConfig) -> None:
 
 
 def _base_rsync_command(cfg: Config, target: BackupTargetConfig, *, dry_run: bool) -> list[str]:
-    cmd = [cfg.backup.rsync_bin, "-a", "--stats", "--human-readable"]
+    cmd = [
+        cfg.backup.rsync_bin,
+        "-a",
+        "--stats",
+        "--human-readable",
+        f"--timeout={cfg.backup.io_timeout_seconds}",
+    ]
     if target.compress:
         cmd.append("-z")
     if target.mode == "append":
@@ -186,7 +209,95 @@ def _relative_rsync_source(cfg: Config, path: Path) -> str:
     return f"{str(cfg._root.resolve()).rstrip('/')}/./{relative}{suffix}"
 
 
-def _write_instance_manifest(cfg: Config) -> Path:
+def _staged_rsync_source(snapshot_root: Path, relative_path: Path) -> str:
+    if relative_path.is_absolute() or any(part in {"", ".", ".."} for part in relative_path.parts):
+        raise BackupConfigError(f"unsafe SQLite snapshot path: {relative_path}")
+    return f"{str(snapshot_root.resolve()).rstrip('/')}/./{relative_path.as_posix()}"
+
+
+def _rsync_filter_literal(path: Path) -> str:
+    value = path.as_posix().replace("\\", "\\\\")
+    for character in ("*", "?", "["):
+        value = value.replace(character, f"\\{character}")
+    return value
+
+
+def _discover_sqlite_databases(cfg: Config, components: Sequence[Path]) -> list[Path]:
+    """Discover SQLite files inside instance components without following symlinks."""
+    discovered: dict[Path, Path] = {}
+    for component in components:
+        candidates: list[Path] = []
+        if component.is_dir():
+            for directory, _subdirs, filenames in os.walk(component, followlinks=False):
+                candidates.extend(
+                    Path(directory) / filename
+                    for filename in filenames
+                    if Path(filename).suffix.lower() in SQLITE_SUFFIXES
+                )
+        elif component.suffix.lower() in SQLITE_SUFFIXES:
+            candidates.append(component)
+
+        for candidate in candidates:
+            if candidate.is_symlink():
+                continue
+            try:
+                with candidate.open("rb") as handle:
+                    header = handle.read(len(SQLITE_HEADER))
+            except OSError as exc:
+                raise BackupConfigError(f"failed to inspect possible SQLite database {candidate}: {exc}") from exc
+            if header != SQLITE_HEADER:
+                continue
+            relative = _instance_relative_path(cfg, candidate)
+            discovered.setdefault(relative, candidate)
+    return [discovered[path] for path in sorted(discovered, key=lambda item: item.as_posix())]
+
+
+def _snapshot_sqlite_database(cfg: Config, source: Path, snapshot_root: Path, *, timeout_seconds: int) -> Path:
+    relative = _instance_relative_path(cfg, source)
+    destination = snapshot_root / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout_seconds
+
+    def check_deadline(_status: int, _remaining: int, _total: int) -> None:
+        if time.monotonic() > deadline:
+            raise TimeoutError(f"SQLite snapshot timed out after {timeout_seconds} seconds")
+
+    try:
+        source_uri = f"{source.resolve().as_uri()}?mode=ro"
+        with (
+            closing(sqlite3.connect(source_uri, uri=True, timeout=min(timeout_seconds, 60))) as source_conn,
+            closing(sqlite3.connect(destination)) as destination_conn,
+        ):
+            source_conn.backup(destination_conn, pages=4096, progress=check_deadline, sleep=0.05)
+            # The backup API may carry WAL journal mode into the copy.
+            # Normalize the standalone artifact so it has no sidecars.
+            destination_conn.execute("PRAGMA journal_mode=DELETE")
+            check = destination_conn.execute("PRAGMA quick_check").fetchone()
+            if check != ("ok",):
+                raise sqlite3.DatabaseError(f"quick_check returned {check!r}")
+        os.chmod(destination, source.stat().st_mode & 0o777)
+    except (OSError, sqlite3.Error, TimeoutError) as exc:
+        raise BackupConfigError(f"failed to create consistent SQLite snapshot for {relative}: {exc}") from exc
+    return relative
+
+
+def _prepare_sqlite_snapshots(
+    cfg: Config,
+    snapshot_root: Path,
+    components: Sequence[Path],
+) -> list[Path]:
+    return [
+        _snapshot_sqlite_database(
+            cfg,
+            source,
+            snapshot_root,
+            timeout_seconds=cfg.backup.process_timeout_seconds,
+        )
+        for source in _discover_sqlite_databases(cfg, components)
+    ]
+
+
+def _write_instance_manifest(cfg: Config, *, sqlite_databases: Sequence[Path] = ()) -> Path:
     cfg.control_root.mkdir(parents=True, exist_ok=True)
     components = _instance_component_paths(cfg)
     payload = {
@@ -194,6 +305,7 @@ def _write_instance_manifest(cfg: Config) -> Path:
         "schema_version": INSTANCE_BACKUP_SCHEMA_VERSION,
         "scholaraio_version": __version__,
         "updated_at": datetime.now(timezone.utc).isoformat(),
+        "sqlite_databases": [path.as_posix() for path in sqlite_databases],
         "components": [
             {
                 "path": _instance_relative_path(cfg, path).as_posix(),
@@ -219,7 +331,14 @@ def _write_instance_manifest(cfg: Config) -> Path:
     return manifest_path
 
 
-def build_rsync_command(cfg: Config, target_name: str, *, dry_run: bool = False) -> list[str]:
+def build_rsync_command(
+    cfg: Config,
+    target_name: str,
+    *,
+    dry_run: bool = False,
+    sqlite_snapshot_root: Path | None = None,
+    sqlite_snapshot_paths: Sequence[Path] = (),
+) -> list[str]:
     """Build the rsync command line for a configured backup target."""
     target = _resolve_target(cfg, target_name)
     cmd = _base_rsync_command(cfg, target, dry_run=dry_run)
@@ -229,8 +348,21 @@ def build_rsync_command(cfg: Config, target_name: str, *, dry_run: bool = False)
         # A restorable instance target represents the current runtime state.
         # Mirror deletions inside each component so removed papers or metadata
         # cannot reappear from stale remote files during a later restore.
-        cmd.extend(["--relative", "--delete"])
-        sources = [_relative_rsync_source(cfg, path) for path in _instance_component_paths(cfg)]
+        cmd.extend(["--relative", "--delete", "--delete-excluded"])
+        components = _instance_component_paths(cfg)
+        sqlite_paths = list(sqlite_snapshot_paths)
+        if not sqlite_paths:
+            sqlite_paths = [_instance_relative_path(cfg, path) for path in _discover_sqlite_databases(cfg, components)]
+        for path in sqlite_paths:
+            literal_path = _rsync_filter_literal(path)
+            for suffix in SQLITE_TRANSIENT_SUFFIXES:
+                cmd.append(f"--exclude=/{literal_path}{suffix}")
+        sources: list[str] = []
+        if sqlite_snapshot_root is not None:
+            # Rsync keeps the first duplicate relative source path. Put staged
+            # online-backup copies first so live database files never win.
+            sources.extend(_staged_rsync_source(sqlite_snapshot_root, path) for path in sqlite_snapshot_paths)
+        sources.extend(_relative_rsync_source(cfg, path) for path in components)
     else:
         for pattern in target.exclude:
             cmd.extend(["--exclude", pattern])
@@ -241,14 +373,25 @@ def build_rsync_command(cfg: Config, target_name: str, *, dry_run: bool = False)
     return cmd
 
 
-def _run_command(cmd: list[str], target: BackupTargetConfig) -> subprocess.CompletedProcess[str]:
+def _run_command(cfg: Config, cmd: list[str], target: BackupTargetConfig) -> subprocess.CompletedProcess[str]:
     env, askpass_path = _build_password_env(target)
-    run_kwargs: dict[str, Any] = {"check": False, "text": True, "capture_output": True}
+    run_kwargs: dict[str, Any] = {
+        "check": False,
+        "text": True,
+        "capture_output": True,
+        "timeout": cfg.backup.process_timeout_seconds,
+    }
     if env is not None:
         run_kwargs["env"] = env
         run_kwargs["stdin"] = subprocess.DEVNULL
     try:
         return subprocess.run(cmd, **run_kwargs)
+    except subprocess.TimeoutExpired as exc:
+        program = Path(cmd[0]).name
+        raise BackupConfigError(
+            f"{program} timed out after {cfg.backup.process_timeout_seconds} seconds; "
+            "increase backup.process_timeout_seconds if this transfer is expected to take longer"
+        ) from exc
     except OSError as exc:
         detail = exc.strerror or str(exc)
         program = Path(cmd[0]).name
@@ -261,14 +404,37 @@ def _run_command(cmd: list[str], target: BackupTargetConfig) -> subprocess.Compl
                 pass
 
 
-def run_backup(cfg: Config, target_name: str, *, dry_run: bool = False) -> BackupRunResult:
+def run_backup(
+    cfg: Config,
+    target_name: str,
+    *,
+    dry_run: bool = False,
+    on_command: Callable[[list[str]], None] | None = None,
+) -> BackupRunResult:
     """Run an rsync backup for a configured target."""
     target = _resolve_target(cfg, target_name)
     if target.scope == "instance" and not dry_run:
         _validate_instance_target(target)
-        _write_instance_manifest(cfg)
-    cmd = build_rsync_command(cfg, target_name, dry_run=dry_run)
-    completed = _run_command(cmd, target)
+        components = _instance_component_paths(cfg)
+        with tempfile.TemporaryDirectory(prefix="scholaraio-instance-snapshot-") as temp_dir:
+            snapshot_root = Path(temp_dir)
+            snapshot_paths = _prepare_sqlite_snapshots(cfg, snapshot_root, components)
+            _write_instance_manifest(cfg, sqlite_databases=snapshot_paths)
+            cmd = build_rsync_command(
+                cfg,
+                target_name,
+                dry_run=False,
+                sqlite_snapshot_root=snapshot_root,
+                sqlite_snapshot_paths=snapshot_paths,
+            )
+            if on_command is not None:
+                on_command(cmd)
+            completed = _run_command(cfg, cmd, target)
+    else:
+        cmd = build_rsync_command(cfg, target_name, dry_run=dry_run)
+        if on_command is not None:
+            on_command(cmd)
+        completed = _run_command(cfg, cmd, target)
     return BackupRunResult(
         command=cmd,
         returncode=completed.returncode,
@@ -305,8 +471,21 @@ def _validate_manifest(payload: object) -> dict[str, Any]:
             raise BackupConfigError(f"unsafe path in remote backup manifest: {path_value!r}")
         components.append({"path": path.as_posix(), "type": type_value})
 
+    raw_sqlite_databases = payload.get("sqlite_databases", [])
+    if not isinstance(raw_sqlite_databases, list):
+        raise BackupConfigError("remote backup manifest has an invalid SQLite database list")
+    sqlite_databases: list[str] = []
+    for path_value in raw_sqlite_databases:
+        if not isinstance(path_value, str):
+            raise BackupConfigError("remote backup manifest has an invalid SQLite database path")
+        path = PurePosixPath(path_value)
+        if path.is_absolute() or not path.parts or any(part in {"", ".", ".."} for part in path.parts):
+            raise BackupConfigError(f"unsafe SQLite path in remote backup manifest: {path_value!r}")
+        sqlite_databases.append(path.as_posix())
+
     validated = dict(payload)
     validated["components"] = components
+    validated["sqlite_databases"] = sqlite_databases
     return validated
 
 
@@ -320,7 +499,7 @@ def fetch_backup_manifest(cfg: Config, target_name: str) -> dict[str, Any]:
         _remote_for(target),
         f"cat -- {remote_path}",
     ]
-    completed = _run_command(command, target)
+    completed = _run_command(cfg, command, target)
     if completed.returncode != 0:
         detail = completed.stderr.strip() or f"ssh exit code {completed.returncode}"
         raise BackupConfigError(f"failed to read remote backup manifest: {detail}")
@@ -361,6 +540,27 @@ def resolve_restore_destination(destination: str | Path) -> Path:
     if path.exists() and not path.is_dir():
         raise BackupConfigError(f"restore destination is not a directory: {path}")
     return path
+
+
+def _validate_restored_sqlite_databases(restore_root: Path, manifest: Mapping[str, Any]) -> None:
+    root = restore_root.resolve()
+    for path_value in manifest.get("sqlite_databases", []):
+        relative = Path(*PurePosixPath(path_value).parts)
+        database = (root / relative).resolve()
+        try:
+            database.relative_to(root)
+        except ValueError as exc:
+            raise BackupConfigError(f"restored SQLite path escapes destination: {path_value!r}") from exc
+        if not database.is_file():
+            raise BackupConfigError(f"restored SQLite database is missing: {relative}")
+        try:
+            source_uri = f"{database.as_uri()}?mode=ro"
+            with closing(sqlite3.connect(source_uri, uri=True)) as connection:
+                check = connection.execute("PRAGMA quick_check").fetchone()
+            if check != ("ok",):
+                raise sqlite3.DatabaseError(f"quick_check returned {check!r}")
+        except sqlite3.Error as exc:
+            raise BackupConfigError(f"restored SQLite database failed validation: {relative}: {exc}") from exc
 
 
 def build_restore_command(
@@ -413,8 +613,9 @@ def run_restore(
     )
     if not dry_run:
         restore_root.mkdir(parents=True, exist_ok=True)
-    completed = _run_command(cmd, target)
+    completed = _run_command(cfg, cmd, target)
     if completed.returncode == 0 and not dry_run:
+        _validate_restored_sqlite_databases(restore_root, validated)
         local_config = restore_root / "config.local.yaml"
         if local_config.exists():
             local_config.chmod(0o600)
