@@ -18,6 +18,10 @@ class ReleaseMetadata:
     pyproject_version: str
     runtime_version: str | None
     citation_version: str | None
+    citation_date: str | None
+    development_statuses: tuple[str, ...]
+    changelog_versions: tuple[str, ...]
+    changelog_release_dates: tuple[tuple[str, str], ...]
     is_prerelease: bool
     prerelease_label: str
 
@@ -25,13 +29,23 @@ class ReleaseMetadata:
 def read_release_metadata(root: Path, ref_name: str) -> ReleaseMetadata:
     tag_version = ref_name.removeprefix("v")
     base_version, separator, prerelease_label = tag_version.partition("-")
-    pyproject_version = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    pyproject_version = project["version"]
+    development_statuses = tuple(
+        classifier for classifier in project.get("classifiers", []) if classifier.startswith("Development Status ::")
+    )
 
     init_text = (root / "scholaraio" / "__init__.py").read_text(encoding="utf-8")
     init_match = re.search(r'__version__\s*=\s*"([^"]+)"', init_text)
 
     cff_text = (root / "CITATION.cff").read_text(encoding="utf-8")
     cff_match = re.search(r'^version:\s*"?([^"\n]+)"?\s*$', cff_text, re.MULTILINE)
+    cff_date_match = re.search(r'^date-released:\s*"?([^"\n]+)"?\s*$', cff_text, re.MULTILINE)
+    changelog_text = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    changelog_versions = tuple(re.findall(r"^## \[([^]]+)]", changelog_text, re.MULTILINE))
+    changelog_release_dates = tuple(
+        re.findall(r"^## \[([^]]+)]\s+—\s+(\d{4}-\d{2}-\d{2})\s*$", changelog_text, re.MULTILINE)
+    )
 
     return ReleaseMetadata(
         tag_version=tag_version,
@@ -39,6 +53,10 @@ def read_release_metadata(root: Path, ref_name: str) -> ReleaseMetadata:
         pyproject_version=pyproject_version,
         runtime_version=init_match.group(1) if init_match else None,
         citation_version=cff_match.group(1).strip() if cff_match else None,
+        citation_date=cff_date_match.group(1).strip() if cff_date_match else None,
+        development_statuses=development_statuses,
+        changelog_versions=changelog_versions,
+        changelog_release_dates=changelog_release_dates,
         is_prerelease=bool(separator),
         prerelease_label=prerelease_label,
     )
@@ -57,6 +75,24 @@ def validate_release_metadata(metadata: ReleaseMetadata) -> None:
             "Release metadata mismatch detected. Expected all versions to equal "
             f"{metadata.pyproject_version}, got: {', '.join(mismatches)}"
         )
+
+    if metadata.tag_version not in metadata.changelog_versions:
+        raise SystemExit(f"Release tag {metadata.tag_version} has no matching CHANGELOG.md section")
+
+    stable_classifier = "Development Status :: 5 - Production/Stable"
+    if not metadata.is_prerelease and metadata.development_statuses != (stable_classifier,):
+        statuses = ", ".join(metadata.development_statuses) or "missing"
+        raise SystemExit(
+            f"Stable releases require exactly one Production/Stable development classifier; got: {statuses}"
+        )
+
+    if not metadata.is_prerelease:
+        changelog_date = dict(metadata.changelog_release_dates).get(metadata.tag_version)
+        if metadata.citation_date != changelog_date:
+            raise SystemExit(
+                "Stable release date mismatch. Expected CITATION.cff and CHANGELOG.md to agree, "
+                f"got citation={metadata.citation_date}, changelog={changelog_date}"
+            )
 
 
 def write_github_outputs(metadata: ReleaseMetadata, output_path: str | None) -> None:
