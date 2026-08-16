@@ -22,7 +22,7 @@ It does not claim that the candidate pull request has passed remote CI, that the
 
 | Gate | Command or path | Result |
 |---|---|---|
-| Full regression suite | `python -m pytest -q -p no:cacheprovider` | 1624 passed |
+| Full regression suite | `python -m pytest -q -p no:cacheprovider` | 1627 passed |
 | Lint | `python -m ruff check scholaraio tests scripts/check_release_metadata.py` | passed |
 | Format | `python -m ruff format --check scholaraio tests scripts/check_release_metadata.py` | 225 files formatted |
 | Type check | `python -m mypy scholaraio` | 147 source files, no issues |
@@ -39,9 +39,10 @@ It does not claim that the candidate pull request has passed remote CI, that the
 
 - Package, runtime, plugin, marketplace, and citation versions remain aligned at
   `2.0.0`.
-- Stable tags now fail before publishing unless the exact tag has a changelog
-  section, the package has exactly one Production/Stable classifier, and the
-  citation and changelog release dates agree.
+- Stable tags now fail before publishing unless the exact tag has exactly one
+  dated changelog section, the package has exactly one Production/Stable
+  classifier, and the citation and changelog release dates agree on a valid ISO
+  calendar date.
 - `CHANGELOG.md` records the complete post-beta delta: full-instance backup and
   restore, SQLite-consistent backup hardening, bounded transfer execution,
   chunk paper-type normalization, and confirmed dead-code removal.

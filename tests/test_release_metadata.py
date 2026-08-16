@@ -62,7 +62,15 @@ def test_release_metadata_rejects_stable_tag_without_changelog_section() -> None
     metadata = read_release_metadata(root=Path("."), ref_name="v2.0.0")
     metadata = replace(metadata, changelog_versions=("2.0.0-beta.1",))
 
-    with pytest.raises(SystemExit, match="no matching CHANGELOG"):
+    with pytest.raises(SystemExit, match="exactly one matching CHANGELOG"):
+        validate_release_metadata(metadata)
+
+
+def test_release_metadata_rejects_duplicate_changelog_sections() -> None:
+    metadata = read_release_metadata(root=Path("."), ref_name="v2.0.0")
+    metadata = replace(metadata, changelog_versions=(*metadata.changelog_versions, "2.0.0"))
+
+    with pytest.raises(SystemExit, match=r"exactly one matching CHANGELOG.*got: 2"):
         validate_release_metadata(metadata)
 
 
@@ -82,4 +90,24 @@ def test_release_metadata_rejects_mismatched_stable_release_dates() -> None:
     metadata = replace(metadata, citation_date="2026-07-21")
 
     with pytest.raises(SystemExit, match="release date mismatch"):
+        validate_release_metadata(metadata)
+
+
+def test_release_metadata_rejects_missing_stable_release_dates() -> None:
+    metadata = read_release_metadata(root=Path("."), ref_name="v2.0.0")
+    metadata = replace(metadata, citation_date=None, changelog_release_dates=())
+
+    with pytest.raises(SystemExit, match="exactly one dated CHANGELOG"):
+        validate_release_metadata(metadata)
+
+
+def test_release_metadata_rejects_invalid_stable_release_date() -> None:
+    metadata = read_release_metadata(root=Path("."), ref_name="v2.0.0")
+    metadata = replace(
+        metadata,
+        citation_date="2026-99-99",
+        changelog_release_dates=(("2.0.0", "2026-99-99"),),
+    )
+
+    with pytest.raises(SystemExit, match="not a valid ISO date"):
         validate_release_metadata(metadata)

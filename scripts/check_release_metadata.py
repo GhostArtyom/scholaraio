@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 try:
@@ -76,8 +77,12 @@ def validate_release_metadata(metadata: ReleaseMetadata) -> None:
             f"{metadata.pyproject_version}, got: {', '.join(mismatches)}"
         )
 
-    if metadata.tag_version not in metadata.changelog_versions:
-        raise SystemExit(f"Release tag {metadata.tag_version} has no matching CHANGELOG.md section")
+    changelog_section_count = metadata.changelog_versions.count(metadata.tag_version)
+    if changelog_section_count != 1:
+        raise SystemExit(
+            f"Release tag {metadata.tag_version} requires exactly one matching CHANGELOG.md section; "
+            f"got: {changelog_section_count}"
+        )
 
     stable_classifier = "Development Status :: 5 - Production/Stable"
     if not metadata.is_prerelease and metadata.development_statuses != (stable_classifier,):
@@ -87,12 +92,28 @@ def validate_release_metadata(metadata: ReleaseMetadata) -> None:
         )
 
     if not metadata.is_prerelease:
-        changelog_date = dict(metadata.changelog_release_dates).get(metadata.tag_version)
+        changelog_dates = [
+            release_date
+            for version, release_date in metadata.changelog_release_dates
+            if version == metadata.tag_version
+        ]
+        if len(changelog_dates) != 1:
+            raise SystemExit(
+                f"Stable release {metadata.tag_version} requires exactly one dated CHANGELOG.md section; "
+                f"got: {len(changelog_dates)}"
+            )
+
+        changelog_date = changelog_dates[0]
         if metadata.citation_date != changelog_date:
             raise SystemExit(
                 "Stable release date mismatch. Expected CITATION.cff and CHANGELOG.md to agree, "
                 f"got citation={metadata.citation_date}, changelog={changelog_date}"
             )
+
+        try:
+            date.fromisoformat(changelog_date)
+        except ValueError as exc:
+            raise SystemExit(f"Stable release date is not a valid ISO date: {changelog_date}") from exc
 
 
 def write_github_outputs(metadata: ReleaseMetadata, output_path: str | None) -> None:
