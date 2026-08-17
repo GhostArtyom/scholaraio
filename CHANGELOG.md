@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [2.0.0] — 2026-08-16
+## [2.0.0] — 2026-08-17
 
 ScholarAIO 2.0.0 is the first stable release in the 2.x line. It includes all
 changes from `2.0.0-beta.1` plus the post-beta additions and fixes below.

@@ -22,7 +22,7 @@ def test_release_metadata_accepts_exact_release_tag() -> None:
     assert metadata.base_version == "2.0.0"
     assert metadata.development_statuses == ("Development Status :: 5 - Production/Stable",)
     assert "2.0.0" in metadata.changelog_versions
-    assert metadata.citation_date == "2026-08-16"
+    assert metadata.citation_date == "2026-08-17"
     assert dict(metadata.changelog_release_dates)["2.0.0"] == metadata.citation_date
 
 
@@ -46,10 +46,10 @@ def test_release_metadata_rejects_wrong_base_tag_version() -> None:
         pyproject_version="2.0.0",
         runtime_version="2.0.0",
         citation_version="2.0.0",
-        citation_date="2026-08-16",
+        citation_date="2026-08-17",
         development_statuses=("Development Status :: 5 - Production/Stable",),
         changelog_versions=("2.0.0",),
-        changelog_release_dates=(("2.0.0", "2026-08-16"),),
+        changelog_release_dates=(("2.0.0", "2026-08-17"),),
         is_prerelease=True,
         prerelease_label="beta.1",
     )
