@@ -85,7 +85,7 @@ for removed surfaces, migration guidance, and the 2.x compatibility promise.
 | **Persistent Notes** | Cross-session memory | Keep analysis notes for each paper so future sessions can reuse them instead of starting over |
 | **Research Insights** | Reading behavior analytics | Search hot keywords, most-read papers, reading trends, and semantic neighbor recommendations for papers you haven't read yet |
 | **Federated Discovery** | Cross-library search | Search your main library, exploration libraries, and arXiv from one entry point instead of hopping across tools |
-| **Remote Backup** | Rsync-based sync | Back up the ScholarAIO `data/` workspace to configured remote targets through named rsync plans |
+| **Backup & Restore** | Portable instance recovery | Keep legacy data-only rsync plans or opt into a manifest-validated full-instance backup and one-click restore covering local config, data, workspaces, published outputs, and control state |
 | **Grounded Scientific Tool Use** | Consult exact interfaces | Use versioned official documentation at runtime instead of guessing scientific-software commands and parameters |
 | **Bounded Tool Adapters** | Integrate only when justified | Keep external tools optional, isolated, testable, and subject to the 2.x integration gate |
 | **Academic Writing** | AI-assisted writing | Router-first workflows for literature review, guided single-paper reading, paper sections, citation check, rebuttal, gap analysis, poster packages, and technical reports — with every citation traceable to your own library |
