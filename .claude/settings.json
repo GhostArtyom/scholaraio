@@ -3,7 +3,12 @@
     "allow": [
       "mcp__exa__web_search_exa",
       "mcp__exa__web_fetch_exa",
-      "mcp__exa__web_search_advanced_exa"
+      "mcp__exa__web_search_advanced_exa",
+      "Bash(.venv/bin/python3 scholaraio *)",
+      "Bash(.venv/bin/python scholaraio *)",
+      "Bash(uv run --no-sync scholaraio *)",
+      "Bash(uv run scholaraio *)",
+      "Bash(scholaraio *)"
     ],
     "deny": [
       "WebSearch",
