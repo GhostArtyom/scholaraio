@@ -15,7 +15,8 @@ The Python package is `scholaraio`. Real work should usually happen through the 
 ## How To Work In This Repo
 
 - Prefer a matching project skill in `.claude/skills/` when the user request clearly maps to one.
-- Use the `scholaraio` CLI to do real work instead of only describing what should be done.
+- **Python runner / CLI**: Run the project CLI as `uv run scholaraio ...`. Use `uv run python -m <pkg>` only for modules without a console entry point.
+- **No inline Python scripts**: Do not write `python -c` / `uv run python -c` one-liners for data queries or bulk edits. Use `scholaraio` CLI commands, `jq`, `grep`, `awk`, `comm`, and shell pipelines instead. Only fall back to Python when the CLI has no equivalent and shell tools genuinely cannot express the logic.
 - Load information progressively. Prefer metadata or abstracts first, then conclusions or full text only when needed.
 - Treat paper conclusions as claims, not facts. Compare evidence, point out limitations, and distinguish supported results from author interpretation.
 - Keep user-facing drafts, reports, exports, and research outputs under `workspace/`, not the repository root or `scholaraio/`.
@@ -89,16 +90,16 @@ High-signal canonical implementation pointers:
 
 ## Commands To Know
 
-- `scholaraio --help`
-- `scholaraio setup check`
-- `scholaraio search --help`
-- `scholaraio show --help`
-- `scholaraio gui --help`
-- `scholaraio pipeline --help`
-- `scholaraio ws --help`
-- `scholaraio migrate --help`
-- `scholaraio migrate upgrade --help`
-- `scholaraio migrate finalize --help`
+- `uv run scholaraio --help`
+- `uv run scholaraio setup check`
+- `uv run scholaraio search --help`
+- `uv run scholaraio show --help`
+- `uv run scholaraio gui --help`
+- `uv run scholaraio pipeline --help`
+- `uv run scholaraio ws --help`
+- `uv run scholaraio migrate --help`
+- `uv run scholaraio migrate upgrade --help`
+- `uv run scholaraio migrate finalize --help`
 
 Common verification commands in this repo:
 
