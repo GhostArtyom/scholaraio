@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import re
 import shutil
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
+
+from scholaraio.core.fileio import atomic_write_text, file_lock
 
 _REVIEW_ONLY_JOURNAL_PREFIXES = (
     "annual review of ",
@@ -231,10 +234,10 @@ def best_citation(meta: dict) -> int:
     if not cc:
         return 0
     if isinstance(cc, (int, float)):
-        return int(cc)
+        return int(cc) if not isinstance(cc, float) or math.isfinite(cc) else 0
     if not isinstance(cc, dict):
         return 0
-    vals = [v for v in cc.values() if isinstance(v, (int, float))]
+    vals = [v for v in cc.values() if isinstance(v, (int, float)) and (not isinstance(v, float) or math.isfinite(v))]
     return int(max(vals)) if vals else 0
 
 
@@ -282,7 +285,10 @@ def read_meta(paper_d: Path) -> dict:
     """
     p = paper_d / "meta.json"
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"Metadata must be a JSON object: {p}")
+        return data
     except json.JSONDecodeError as e:
         raise ValueError(f"Malformed JSON in {p}: {e}") from e
 
@@ -297,14 +303,31 @@ def write_meta(paper_d: Path, data: dict) -> None:
         paper_d: Paper directory path.
         data: Metadata dict to serialize.
     """
-    data = normalize_paper_metadata(data)
     p = paper_d / "meta.json"
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    tmp.replace(p)
+    with file_lock(p):
+        _write_meta_unlocked(p, data)
+
+
+def _write_meta_unlocked(path: Path, data: dict) -> None:
+    atomic_write_text(path, json.dumps(normalize_paper_metadata(data), indent=2, ensure_ascii=False) + "\n")
+    from scholaraio.stores.library_state import notify_metadata_write
+
+    notify_metadata_write(path)
+
+
+def modify_meta(paper_d: Path, edit: Callable[[dict], None]) -> dict:
+    """Apply a short in-memory edit to the latest metadata under a record lock.
+
+    Do expensive extraction/network work before entering this transaction.
+    ``write_meta`` replaces a whole record; use this or ``update_meta`` when
+    changing fields of an existing record so unrelated concurrent edits survive.
+    """
+    with file_lock(paper_d / "meta.json"):
+        data = read_meta(paper_d)
+        edit(data)
+        data = normalize_paper_metadata(data)
+        _write_meta_unlocked(paper_d / "meta.json", data)
+        return data
 
 
 def update_meta(paper_d: Path, **fields) -> dict:
@@ -317,8 +340,4 @@ def update_meta(paper_d: Path, **fields) -> dict:
     Returns:
         The updated metadata dict.
     """
-    data = read_meta(paper_d)
-    data.update(fields)
-    data = normalize_paper_metadata(data)
-    write_meta(paper_d, data)
-    return data
+    return modify_meta(paper_d, lambda data: data.update(fields))
