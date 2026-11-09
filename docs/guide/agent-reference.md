@@ -24,6 +24,8 @@ Practical rule:
 - if the content is a reusable multi-step workflow, make it a skill
 - if the content is long-form reference, keep it in docs or skill supporting files
 
+For PDF ingestion in this checkout, a MinerU failure or expired token requires immediate notification to the user and a pause in parsing. Wait for the user to restore MinerU; use a fallback parser only when explicitly authorized. This agent policy also applies when the runtime offers automatic parser fallback.
+
 ## Repository Knowledge System
 
 ScholarAIO treats repository-local Markdown as the system of record for agent
