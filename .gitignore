@@ -41,6 +41,9 @@ site/
 # Local agent worktrees
 .claude/worktrees/
 
+# Local PDF scan history (skill and ignored content hashes are versioned)
+/.claude/skills/new-papers/state/
+
 # Backups
 *.bak
 

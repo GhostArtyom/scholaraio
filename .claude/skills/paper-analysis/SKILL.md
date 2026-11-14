@@ -6,6 +6,8 @@ description: Use when the user wants detailed analysis of a specific paper, says
 
 对用户指定的单篇论文进行结构化深度分析，用专业但直白的语言讲清楚核心内容，输出为完整的 Analysis 文件。
 
+用户说“解析新论文”，且指 Brainstorming 约定目录中的新增 PDF 或未另行指定来源、尚未完成本批次检查和入库时，先使用 [new-papers skill](../new-papers/SKILL.md) 完成前置流程。上游已确定本批次论文及记录 ID 时，逐篇展示论文信息后直接分析，不再重新扫描或询问确认。
+
 ## 核心原则
 
 - **直接指定论文**：用户已知道要看哪篇，不需要从模糊关键词搜索筛选

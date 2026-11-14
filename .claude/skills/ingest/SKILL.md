@@ -6,6 +6,8 @@ description: Use when the user wants to process new papers, patents, theses, doc
 
 将 inbox 中的 PDF、Office 文档（DOCX/XLSX/PPTX）或 Markdown 文件处理入库。支持论文、专利、学位论文、一般文档和论文集（proceedings）。
 
+用户说“检查新论文”“入库新论文”或“解析新论文”，且来源是 Brainstorming 的约定目录或未另行指定来源、尚未完成本批次扫描时，先使用 [new-papers skill](../new-papers/SKILL.md)，按其检查、入库或解析分支处理。本 skill 承接已授权的入库批次，不重复扫描或询问。明确指定 inbox 或其他来源的请求继续按本 skill 执行。
+
 ## 支持的文件格式
 
 | 格式 | 放入目录 | 处理方式 |

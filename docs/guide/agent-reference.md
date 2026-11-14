@@ -96,6 +96,12 @@ Representative skills:
 - Writing: `academic-writing`, `nature-workflow`, `literature-review`, `paper-guided-reading`, `paper-writing`, `citation-check`, `writing-polish`, `review-response`, `research-gap`, `poster`, `technical-report`
 - Outputs and tooling: `draw`, `document`, `publish`, `scientific-runtime`, `scientific-tool-onboarding`
 
+### New Paper Workflow
+
+The `new-papers` skill handles requests for new papers in three topic folders below `Study/Brainstorming`: “检查新论文” scans and lists candidates for an import choice; “入库新论文” scans and ingests the requested batch; “解析新论文” scans, ingests, then uses `paper-analysis` to produce per-paper analysis files. An explicit import or analysis request authorizes its batch without a second import confirmation. Requests naming inbox or another source retain that source. Discussing skill configuration does not trigger processing.
+
+The scanner automatically detects `/mnt/e` or `/mnt/c` on WSL. When both locations exist, set `SCHOLARAIO_BRAINSTORMING_ROOT` to choose one. Missing or ambiguous sources stop the scan without replacing prior reports. The skill and `.claude/skills/new-papers/ignored.json` are versioned together so content-based ignore decisions synchronize with the repository. Scan reports stay in the Git-ignored `state/` subdirectory beside the skill; analysis deliverables belong in `workspace/`.
+
 ## Repo And Module Map
 
 ScholarAIO’s canonical implementation namespaces are:
