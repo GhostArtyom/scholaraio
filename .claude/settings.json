@@ -9,10 +9,6 @@
       "Bash(uv run --no-sync scholaraio *)",
       "Bash(uv run scholaraio *)",
       "Bash(scholaraio *)"
-    ],
-    "deny": [
-      "WebSearch",
-      "WebFetch"
     ]
   }
 }
